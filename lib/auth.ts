@@ -13,14 +13,17 @@ export async function getCurrentUser(): Promise<User | null> {
 
   if (!clerkId) return null
 
-  const result = await query(
-    'SELECT * FROM users WHERE clerk_id = $1 AND is_active = true LIMIT 1',
-    [clerkId],
-  )
-
-  if (result.rows.length === 0) return null
-
-  return result.rows[0] as User
+  try {
+    const result = await query(
+      'SELECT * FROM users WHERE clerk_id = $1 AND is_active = true LIMIT 1',
+      [clerkId],
+    )
+    if (result.rows.length === 0) return null
+    return result.rows[0] as User
+  } catch {
+    // DB not yet migrated or unreachable — treat as unauthenticated
+    return null
+  }
 }
 
 /**
