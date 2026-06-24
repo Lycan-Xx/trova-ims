@@ -21,6 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+// Select still used for the Unit field above
+import { CategorySelect } from '@/components/products/category-select'
 import { createProduct, updateProduct } from '@/app/actions/products'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category, UnitType } from '@/lib/db/schema'
@@ -86,6 +88,10 @@ export function ProductSlideOver({
 }: ProductSlideOverProps) {
   const router = useRouter()
   const isEditing = !!product
+
+  // Category list (may grow via inline creation)
+  const [localCategories, setLocalCategories] = React.useState<Category[]>(categories)
+  React.useEffect(() => { setLocalCategories(categories) }, [categories])
 
   // Form state
   const [name, setName] = React.useState('')
@@ -221,26 +227,14 @@ export function ProductSlideOver({
 
               {/* Category */}
               <Field label="Category">
-                <Select value={categoryId || 'none'} onValueChange={(v) => setCategoryId(v === 'none' ? '' : (v ?? ''))  }>
-                  <SelectTrigger
-                    className="w-full h-10 rounded-lg text-sm"
-                    style={{
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border)',
-                      color: categoryId ? 'var(--text-primary)' : 'var(--text-muted)',
-                    }}
-                  >
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                    <SelectItem value="none" className="text-text-muted">No category</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id} className="text-text-primary">
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategorySelect
+                  categories={localCategories}
+                  value={categoryId}
+                  onChange={(id, updatedList) => {
+                    setCategoryId(id)
+                    setLocalCategories(updatedList)
+                  }}
+                />
               </Field>
 
               {/* Unit */}
