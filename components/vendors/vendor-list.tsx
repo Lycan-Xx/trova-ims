@@ -6,7 +6,9 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Search, Building2, Edit2, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { VendorSlideOver } from '@/components/vendors/vendor-slide-over'
 import type { VendorWithStats } from '@/app/actions/vendors'
+import type { Vendor } from '@/lib/db/schema'
 
 interface VendorListProps {
   vendors: VendorWithStats[]
@@ -19,6 +21,20 @@ export function VendorList({ vendors, activeType, activeSearch }: VendorListProp
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Slide-over state
+  const [slideOverOpen, setSlideOverOpen] = React.useState(false)
+  const [editingVendor, setEditingVendor] = React.useState<Vendor | null>(null)
+
+  function openAdd() {
+    setEditingVendor(null)
+    setSlideOverOpen(true)
+  }
+
+  function openEdit(vendor: Vendor) {
+    setEditingVendor(vendor)
+    setSlideOverOpen(true)
+  }
 
   function updateParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString())
@@ -91,6 +107,7 @@ export function VendorList({ vendors, activeType, activeSearch }: VendorListProp
           style={{ background: 'var(--accent-primary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-primary-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent-primary)')}
+          onClick={openAdd}
         >
           + Add Vendor
         </Button>
@@ -115,6 +132,7 @@ export function VendorList({ vendors, activeType, activeSearch }: VendorListProp
             onMouseLeave={(e) =>
               (e.currentTarget.style.background = 'var(--accent-primary)')
             }
+            onClick={openAdd}
           >
             + Add Vendor
           </Button>
@@ -122,15 +140,21 @@ export function VendorList({ vendors, activeType, activeSearch }: VendorListProp
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {vendors.map((vendor) => (
-            <VendorCard key={vendor.id} vendor={vendor} />
+            <VendorCard key={vendor.id} vendor={vendor} onEdit={openEdit} />
           ))}
         </div>
       )}
+
+      <VendorSlideOver
+        open={slideOverOpen}
+        onOpenChange={setSlideOverOpen}
+        vendor={editingVendor}
+      />
     </div>
   )
 }
 
-function VendorCard({ vendor }: { vendor: VendorWithStats }) {
+function VendorCard({ vendor, onEdit }: { vendor: VendorWithStats; onEdit: (v: Vendor) => void }) {
   const [hovered, setHovered] = React.useState(false)
 
   return (
@@ -223,6 +247,7 @@ function VendorCard({ vendor }: { vendor: VendorWithStats }) {
           View Details
         </Link>
         <button
+          onClick={() => onEdit(vendor)}
           className="flex items-center justify-center w-7 h-7 rounded-md transition-colors"
           style={{ color: 'var(--text-muted)' }}
           onMouseEnter={(e) => {
