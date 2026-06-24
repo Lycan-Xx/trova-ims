@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ProductSlideOver } from '@/components/products/product-slide-over'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category } from '@/lib/db/schema'
 
@@ -50,6 +51,20 @@ export function ProductList({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+
+  // Slide-over state
+  const [slideOverOpen, setSlideOverOpen] = React.useState(false)
+  const [editingProduct, setEditingProduct] = React.useState<ProductWithStock | null>(null)
+
+  function openAdd() {
+    setEditingProduct(null)
+    setSlideOverOpen(true)
+  }
+
+  function openEdit(product: ProductWithStock) {
+    setEditingProduct(product)
+    setSlideOverOpen(true)
+  }
 
   // Debounce ref
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -138,6 +153,7 @@ export function ProductList({
           style={{ background: 'var(--accent-primary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-primary-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent-primary)')}
+          onClick={openAdd}
         >
           + Add Product
         </Button>
@@ -151,6 +167,7 @@ export function ProductList({
           <Button
             className="h-9 rounded-lg px-4 text-sm font-medium text-white"
             style={{ background: 'var(--accent-primary)' }}
+            onClick={openAdd}
           >
             Add your first product
           </Button>
@@ -237,7 +254,10 @@ export function ProductList({
                         align="end"
                         className="bg-bg-card border-border text-text-primary text-sm"
                       >
-                        <DropdownMenuItem className="cursor-pointer hover:bg-bg-input focus:bg-bg-input">
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-bg-input focus:bg-bg-input"
+                          onClick={() => openEdit(product)}
+                        >
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem className="cursor-pointer hover:bg-bg-input focus:bg-bg-input">
@@ -284,6 +304,14 @@ export function ProductList({
           </div>
         </div>
       )}
+
+      {/* Slide-over panel */}
+      <ProductSlideOver
+        open={slideOverOpen}
+        onOpenChange={setSlideOverOpen}
+        categories={categories}
+        product={editingProduct}
+      />
     </div>
   )
 }
