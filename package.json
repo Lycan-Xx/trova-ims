@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node scripts/run-tests.mjs",
+    "test:json": "node scripts/run-tests.mjs --json"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1075.0",
