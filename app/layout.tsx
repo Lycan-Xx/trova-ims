@@ -1,5 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import { ClerkProvider } from '@clerk/nextjs'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
@@ -50,10 +51,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider afterSignOutUrl="/sign-in">
       <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} bg-bg-base`}>
         <body className="font-sans antialiased">
-          {children}
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
           {process.env.NODE_ENV === 'production' && <Analytics />}
         </body>
       </html>
