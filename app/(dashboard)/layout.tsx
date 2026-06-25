@@ -1,11 +1,17 @@
 import { Sidebar } from '@/components/layout/sidebar'
 import { Topbar } from '@/components/layout/topbar'
+import { getCurrentUser } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Ensure user exists in app DB before rendering dashboard
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+
   return (
     <div
       style={{
