@@ -1,11 +1,10 @@
 // scripts/run-migration.mjs
-// Reads a SQL file and executes it against the Aurora PostgreSQL instance
-// using IAM auth via the RDS Signer.
+// Reads a SQL file and executes it against the Neon PostgreSQL database
+// using the DATABASE_URL environment variable.
 //
 // Usage: node scripts/run-migration.mjs scripts/001-setup-schema.sql
 
 import { readFileSync } from 'fs'
-import { Signer } from '@aws-sdk/rds-signer'
 import pg from 'pg'
 
 const { Pool } = pg
@@ -16,22 +15,15 @@ if (!sqlFile) {
   process.exit(1)
 }
 
+if (!process.env.DATABASE_URL) {
+  console.error('Error: DATABASE_URL environment variable is not set.')
+  process.exit(1)
+}
+
 const sql = readFileSync(sqlFile, 'utf8')
 
-const signer = new Signer({
-  region: process.env.AWS_REGION,
-  hostname: process.env.PGHOST,
-  username: process.env.PGUSER || 'postgres',
-  port: 5432,
-})
-
 const pool = new Pool({
-  host: process.env.PGHOST,
-  database: process.env.PGDATABASE || 'postgres',
-  port: 5432,
-  user: process.env.PGUSER || 'postgres',
-  password: () => signer.getAuthToken(),
-  ssl: { rejectUnauthorized: false },
+  connectionString: process.env.DATABASE_URL,
   max: 1,
 })
 

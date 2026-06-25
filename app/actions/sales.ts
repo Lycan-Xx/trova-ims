@@ -353,6 +353,30 @@ export async function getSales(filters?: {
   }
 }
 
+// ── getCashiers ────────────────────────────────────────────────────────────────
+
+export async function getCashiers(): Promise<
+  { success: true; data: { id: string; name: string }[] } | { success: false; error: string }
+> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  // Only owners/storekeepers need the cashier filter
+  if (user.role === 'cashier') return { success: true, data: [] }
+
+  try {
+    const res = await query(
+      `SELECT id, name FROM users
+       WHERE store_id = $1 AND is_active = true
+       ORDER BY name ASC`,
+      [user.store_id],
+    )
+    return { success: true, data: res.rows as { id: string; name: string }[] }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch cashiers.'
+    return { success: false, error: message }
+  }
+}
+
 // ── getSaleById ────────────────────────────────────────────────────────────────
 
 export async function getSaleById(
