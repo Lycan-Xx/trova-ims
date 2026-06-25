@@ -1,8 +1,12 @@
-import { Pool, ClientBase } from 'pg'
+import { Pool, type ClientBase } from 'pg'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import * as schema from './schema'
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 })
+
+export const db = drizzle(pool, { schema })
 
 /** Single-statement queries */
 export async function query(text: string, params?: unknown[]) {
@@ -20,5 +24,3 @@ export async function withConnection<T>(
     client.release()
   }
 }
-
-export { pool }

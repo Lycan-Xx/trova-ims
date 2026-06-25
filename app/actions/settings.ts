@@ -1,6 +1,5 @@
 'use server'
 
-import { clerkClient } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { query } from '@/lib/db'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
@@ -65,7 +64,7 @@ export async function getUsers(): Promise<
 
   try {
     const res = await query(
-      `SELECT id, clerk_id, store_id, name, email, role, is_active, created_at
+      `SELECT id, auth_id, store_id, name, email, role, is_active, created_at
        FROM users
        WHERE store_id = $1
        ORDER BY
@@ -175,29 +174,18 @@ export async function inviteUser(
       return { success: false, error: 'This email is already a member of your store.' }
     }
 
-    const client = await clerkClient()
-    await client.invitations.createInvitation({
-      emailAddress: email.trim().toLowerCase(),
-      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/sign-up`,
-      publicMetadata: {
-        invited_role: role,
-        store_id: currentUser.store_id,
-      },
-    })
+    // Create a pending user row — auth_id is null until they sign up.
+    // When they sign up via /sign-up, the app will match on email and
+    // link their Better Auth user.id to this row.
+    await query(
+      `INSERT INTO users (id, auth_id, store_id, name, email, role, is_active, created_at)
+       VALUES (gen_random_uuid(), NULL, $1, $2, $3, $4, false, NOW())`,
+      [currentUser.store_id, email.trim().toLowerCase(), email.trim().toLowerCase(), role],
+    )
 
     return { success: true }
-  } catch (err: unknown) {
-    // Clerk throws structured errors
-    if (
-      err &&
-      typeof err === 'object' &&
-      'errors' in err &&
-      Array.isArray((err as { errors: Array<{ message: string }> }).errors)
-    ) {
-      const msg = (err as { errors: Array<{ message: string }> }).errors[0]?.message
-      return { success: false, error: msg ?? 'Invitation failed.' }
-    }
-    const message = err instanceof Error ? err.message : 'Failed to send invitation.'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to add user.'
     return { success: false, error: message }
   }
 }

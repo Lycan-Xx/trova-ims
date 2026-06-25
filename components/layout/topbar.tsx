@@ -1,7 +1,8 @@
 'use client'
 
-import { Bell } from 'lucide-react'
-import { useUser } from '@clerk/nextjs'
+import { Bell, LogOut } from 'lucide-react'
+import { useSession, signOut } from '@/lib/auth-client'
+import { useRouter } from 'next/navigation'
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return '?'
@@ -16,8 +17,15 @@ function getInitials(name: string | null | undefined): string {
 const ALERT_COUNT = 0
 
 export function Topbar() {
-  const { user } = useUser()
-  const initials = getInitials(user?.fullName)
+  const { data: session } = useSession()
+  const router = useRouter()
+  const initials = getInitials(session?.user?.name)
+
+  async function handleSignOut() {
+    await signOut()
+    router.push('/sign-in')
+    router.refresh()
+  }
 
   return (
     <header
@@ -112,9 +120,30 @@ export function Topbar() {
           )}
         </button>
 
+        {/* Sign out */}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          aria-label="Sign out"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 32,
+            height: 32,
+            borderRadius: 6,
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+          }}
+        >
+          <LogOut size={16} strokeWidth={1.75} />
+        </button>
+
         {/* User avatar */}
         <div
-          aria-label={user?.fullName ?? 'User'}
+          aria-label={session?.user?.name ?? 'User'}
           role="img"
           style={{
             width: 30,

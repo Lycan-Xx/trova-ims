@@ -27,8 +27,8 @@ export interface LowStockAlert extends StockSummaryRow {
 export async function getExpiryAlerts(daysAhead: number = 30): Promise<
   { success: true; data: ExpiryAlert[] } | { success: false; error: string }
 > {
+  const user = await requireStoreAccess()
   try {
-    const user = await requireStoreAccess()
 
     const result = await query(
       `SELECT
@@ -82,8 +82,8 @@ export async function getExpiryAlerts(daysAhead: number = 30): Promise<
 export async function getLowStockAlerts(): Promise<
   { success: true; data: LowStockAlert[] } | { success: false; error: string }
 > {
+  const user = await requireStoreAccess()
   try {
-    const user = await requireStoreAccess()
 
     const summaryResult = await getStockSummary()
     if (!summaryResult.success) {
