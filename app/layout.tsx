@@ -1,5 +1,4 @@
 import { Analytics } from '@vercel/analytics/next'
-import { ClerkProvider } from '@clerk/nextjs'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import type { Metadata, Viewport } from 'next'
@@ -52,16 +51,14 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider afterSignOutUrl="/sign-in">
-      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} bg-bg-base`}>
-        <body className="font-sans antialiased">
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-          <Toaster position="bottom-right" richColors />
-          {process.env.NODE_ENV === 'production' && <Analytics />}
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} bg-bg-base`}>
+      <body className="font-sans antialiased">
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
+        <Toaster position="bottom-right" richColors />
+        {process.env.NODE_ENV === 'production' && <Analytics />}
+      </body>
+    </html>
   )
 }

@@ -16,7 +16,7 @@ export interface Store {
 
 export interface User {
   id: string
-  clerk_id: string
+  auth_id: string        // Better Auth user.id (replaces clerk_id)
   store_id: string
   name: string
   email: string
