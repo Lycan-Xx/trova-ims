@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS stores (
 
 CREATE TABLE IF NOT EXISTS users (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  clerk_id   TEXT UNIQUE NOT NULL,
+  auth_id    TEXT,
   store_id   UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   name       TEXT NOT NULL,
   email      TEXT NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_store_id  ON users(store_id);
-CREATE INDEX IF NOT EXISTS idx_users_clerk_id  ON users(clerk_id);
+CREATE INDEX IF NOT EXISTS idx_users_auth_id   ON users(auth_id);
 
 -- CATEGORIES --------------------------------------------------
 

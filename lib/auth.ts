@@ -6,57 +6,58 @@ import { query } from '@/lib/db'
 import { handleFirstSignUp } from '@/lib/auth/first-run'
 import type { User, UserRole } from '@/lib/db/schema'
 
-// ── Better Auth instance ───────────────────────────────────────────────────────
+// ── Better Auth Configuration ─────────────────────────────────────────────────
 
-const productionURL =
-  process.env.BETTER_AUTH_URL ??
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is not set')
+}
+
+const baseURL =
+  process.env.BETTER_AUTH_URL ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : undefined) ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ??
-  process.env.V0_RUNTIME_URL ??
+    : null) ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
   'http://localhost:3000'
 
-const trustedOrigins = Array.from(
-  new Set(
-    [
-      process.env.BETTER_AUTH_URL,
-      process.env.VERCEL_PROJECT_PRODUCTION_URL
-        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-        : undefined,
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : undefined,
-      process.env.V0_RUNTIME_URL,
-      'http://localhost:3000',
-    ].filter(Boolean) as string[],
-  ),
-)
-
 export const auth = betterAuth({
-  baseURL: productionURL,
-  trustedOrigins,
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  baseURL,
+  trustHost: true,
+  database: new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+  }),
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
+    minPasswordLength: 8,
+  },
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // Update session age every 24 hours
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60, // 5 minutes
+    },
   },
   advanced: {
-    ...(process.env.NODE_ENV === 'development' && {
-      defaultCookieAttributes: {
-        sameSite: 'none' as const,
-        secure: true,
-      },
-    }),
+    disableCSRFCheck: false,
+    defaultCookieAttributes: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
+      path: '/',
+    },
   },
   databaseHooks: {
     user: {
       create: {
         after: async (user) => {
           try {
-            await handleFirstSignUp(user.id, user.name, user.email)
+            await handleFirstSignUp(user.id, user.name || '', user.email || '')
           } catch (err) {
-            console.error('[auth] handleFirstSignUp failed:', err)
+            console.error('[better-auth] handleFirstSignUp failed:', err)
+            // Don't throw - let the user be created even if onboarding fails
           }
         },
       },
