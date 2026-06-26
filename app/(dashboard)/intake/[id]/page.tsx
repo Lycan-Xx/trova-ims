@@ -40,14 +40,15 @@ export default async function IntakeDetailPage({
 
   if (!result.success) notFound()
 
-  // getBatchById returns success: true with nested product + vendor
-  const successResult = result as unknown as {
-    success: true
-    data: import('@/app/actions/batches').BatchWithRefs
-    product: import('@/lib/db/schema').Product
-    vendor: import('@/lib/db/schema').Vendor | null
+  const batch = result.data
+  const product = batch.product ?? {
+    id: batch.product_id,
+    name: batch.product_name,
+    sku: batch.product_sku,
+    unit: 'piece',
+    selling_price: batch.selling_price_override ?? '0',
   }
-  const { data: batch, product, vendor } = successResult
+  const vendor = batch.vendor ?? null
 
   const expiryDate = batch.expiry_date ? new Date(batch.expiry_date) : null
   const today = new Date()
