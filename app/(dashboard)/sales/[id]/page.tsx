@@ -45,8 +45,6 @@ export default async function SaleConfirmationPage({
           href="/sales"
           className="inline-flex items-center gap-1.5 text-sm mb-8 transition-colors"
           style={{ color: 'var(--text-muted)' }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
         >
           <ArrowLeft size={14} />
           Back to Sales

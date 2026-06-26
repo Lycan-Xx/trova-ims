@@ -67,8 +67,6 @@ export default async function VendorDetailPage({
         href="/vendors"
         className="inline-flex items-center gap-1.5 text-sm transition-colors"
         style={{ color: 'var(--text-muted)' }}
-        onMouseOver={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
-        onMouseOut={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
       >
         <ArrowLeft size={14} />
         Back to Vendors

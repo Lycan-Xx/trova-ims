@@ -193,12 +193,6 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
                       key={alert.batchId}
                       style={{ borderBottom: '1px solid var(--border-subtle)' }}
                       className="transition-colors"
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = 'var(--bg-card-hover)')
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = 'transparent')
-                      }
                     >
                       <td className="px-5 py-3.5 font-medium" style={{ color: 'var(--text-primary)' }}>
                         <Link
@@ -282,12 +276,6 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
                       key={alert.productId}
                       style={{ borderBottom: '1px solid var(--border-subtle)' }}
                       className="transition-colors"
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = 'var(--bg-card-hover)')
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = 'transparent')
-                      }
                     >
                       <td className="px-5 py-3.5 font-medium" style={{ color: 'var(--text-primary)' }}>
                         <Link
