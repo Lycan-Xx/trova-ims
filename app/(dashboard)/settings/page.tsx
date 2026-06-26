@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { getStoreSettings, getUsers } from '@/app/actions/settings'
+import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
-import { TeamMembersTable } from '@/components/settings/team-members-table'
+import { TeamManagement } from '@/components/settings/team-management'
 
 export const metadata = { title: 'Settings — StockSmart' }
 
@@ -12,13 +12,8 @@ export default async function SettingsPage() {
 
   const isOwner = user.role === 'owner'
 
-  const [storeResult, usersResult] = await Promise.all([
-    getStoreSettings(),
-    isOwner ? getUsers() : Promise.resolve({ success: true as const, data: [] }),
-  ])
-
+  const storeResult = await getStoreSettings()
   const store = storeResult.success ? storeResult.data : null
-  const users = usersResult.success ? usersResult.data : []
 
   return (
     <main className="p-6 max-w-3xl mx-auto flex flex-col gap-8">
@@ -48,16 +43,10 @@ export default async function SettingsPage() {
         </section>
       )}
 
-      {/* Section B — Team Members */}
+      {/* Section B — Team Management */}
       {isOwner && (
-        <section
-          className="rounded-xl p-6"
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-          }}
-        >
-          <TeamMembersTable users={users} currentUserId={user.id} />
+        <section>
+          <TeamManagement isOwner={isOwner} />
         </section>
       )}
 
