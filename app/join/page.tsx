@@ -1,4 +1,4 @@
-import { Suspense } from 'next'
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { acceptInvitation } from '@/app/actions/invitations'
 import { Button } from '@/components/ui/button'

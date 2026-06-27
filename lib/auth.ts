@@ -1,16 +1,11 @@
 import { betterAuth } from 'better-auth'
-import { Pool } from 'pg'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { query } from '@/lib/db'
+import { pool, query } from '@/lib/db'
 import { handleFirstSignUp } from '@/lib/auth/first-run'
 import type { User, UserRole } from '@/lib/db/schema'
 
 // ── Better Auth Configuration ─────────────────────────────────────────────────
-
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is not set')
-}
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -23,10 +18,8 @@ const baseURL =
 export const auth = betterAuth({
   baseURL,
   trustHost: true,
-  database: new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 10,
-  }),
+  // Reuse the Aurora IAM-authenticated pool from lib/db — no DATABASE_URL needed
+  database: pool,
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
