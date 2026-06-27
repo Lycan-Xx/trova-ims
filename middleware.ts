@@ -6,6 +6,7 @@ const PUBLIC_PREFIXES = [
   '/sign-up',
   '/api/auth',
   '/api/migrate',
+  '/api/purge',
   '/api/test-suite',
   '/api/webhooks',
 ]
