@@ -1,12 +1,12 @@
-import Nav from '@/components/landing/nav'
-import Hero from '@/components/landing/hero'
-import Pain from '@/components/landing/pain'
-import BuiltFor from '@/components/landing/built-for'
-import Features from '@/components/landing/features'
-import ProductPeek from '@/components/landing/product-peek'
-import HowItWorks from '@/components/landing/how-it-works'
-import Cta from '@/components/landing/cta'
-import Footer from '@/components/landing/footer'
+import Nav from '@/app/landing/nav'
+import Hero from '@/app/landing/hero'
+import Pain from '@/app/landing/pain'
+import BuiltFor from '@/app/landing/built-for'
+import Features from '@/app/landing/features'
+import ProductPeek from '@/app/landing/product-peek'
+import HowItWorks from '@/app/landing/how-it-works'
+import Cta from '@/app/landing/cta'
+import Footer from '@/app/landing/footer'
 
 export const metadata = {
   title: 'Trova — Know your store, always.',
