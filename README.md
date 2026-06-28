@@ -1,6 +1,6 @@
-# Trova — Inventory Management System
+# Trova Inventory Management System
 
-Trova is a full-stack inventory management application built for small-to-medium retail stores. It handles the complete retail lifecycle: supplier intake, product cataloguing, point-of-sale, vendor relationships, expiry/stock alerts, and owner-level analytics. The entire system is multi-tenant by design — each store is isolated, and every user belongs to exactly one store with a defined role.
+Trova is a full-stack inventory management application built for small-to-medium retail stores. It handles the complete retail lifecycle: supplier intake, product cataloguing, point-of-sale, vendor relationships, expiry/stock alerts, and owner-level analytics. The entire system is multi-tenant by design each store is isolated, and every user belongs to exactly one store with a defined role.
 
 ---
 
@@ -38,7 +38,7 @@ app/
   sign-in/                    # Auth pages
   sign-up/
   join/                       # Invitation acceptance flow
-  (dashboard)/                # Protected app — requires active session
+  (dashboard)/                # Protected app requires active session
     layout.tsx                # Sidebar + topbar shell
     dashboard/                # Home page with stats + weekly chart
     products/                 # Product catalogue + detail slide-over
@@ -57,14 +57,14 @@ components/
   layout/
     sidebar.tsx               # Collapsible icon-only / full-label sidebar (desktop)
     mobile-nav.tsx            # Bottom tab bar with More drawer (mobile)
-    topbar.tsx                # App header — wordmark, alerts, sign-out, avatar
+    topbar.tsx                # App header wordmark, alerts, sign-out, avatar
   auth/auth-form.tsx
   dashboard/weekly-chart.tsx
   products/ vendors/ sales/ intake/ analytics/ settings/
   ui/                         # Shared primitives (stat-card, badge, button…)
 
 lib/
-  auth.ts                     # Better Auth server config — reuses Aurora pool
+  auth.ts                     # Better Auth server config reuses Aurora pool
   auth-client.ts              # Better Auth browser client
   auth/first-run.ts           # Auto store creation on first ever sign-up
   db/
@@ -81,19 +81,19 @@ lib/
 The application uses 8 domain tables plus 4 Better Auth system tables:
 
 ```
-stores        — one row per store (name, currency, low_stock_threshold)
-users         — app users linked to a store, role: owner | staff
-categories    — product groupings scoped per store
-vendors       — supplier records, type: direct | consignment
-products      — SKUs with cost, price, stock_qty, reorder_level
-batches       — stock intake records linked to product + vendor + expiry
-sales         — transaction headers (total, payment method, served_by)
-sale_items    — line items per sale (product, qty, unit_price)
+stores        one row per store (name, currency, low_stock_threshold)
+users         app users linked to a store, role: owner | staff
+categories    product groupings scoped per store
+vendors       supplier records, type: direct | consignment
+products      SKUs with cost, price, stock_qty, reorder_level
+batches       stock intake records linked to product + vendor + expiry
+sales         transaction headers (total, payment method, served_by)
+sale_items    line items per sale (product, qty, unit_price)
 
-"user"        — Better Auth identity (email, hashed password)
-session       — active user sessions
-account       — credential storage (OAuth-compatible)
-verification  — email verification tokens
+"user"        Better Auth identity (email, hashed password)
+session       active user sessions
+account       credential storage (OAuth-compatible)
+verification  email verification tokens
 ```
 
 ---
@@ -104,12 +104,12 @@ verification  — email verification tokens
 |----------------------|----------|------------------------------------------------------------|
 | `BETTER_AUTH_SECRET` | Yes      | Session signing key (`openssl rand -base64 32`)            |
 | `MIGRATION_SECRET`   | Yes      | Protects `/api/migrate` and `/api/purge`                   |
-| `AWS_REGION`         | Yes      | Aurora region — set by Aurora integration                  |
-| `AWS_ROLE_ARN`       | Yes      | IAM role ARN — set by Aurora integration                   |
-| `PGHOST`             | Yes      | Aurora cluster hostname — set by Aurora integration        |
-| `PGUSER`             | Yes      | Database username — set by Aurora integration              |
-| `PGDATABASE`         | Yes      | Database name — set by Aurora integration                  |
-| `PGSSLMODE`          | Yes      | Must be `require` — set by Aurora integration              |
+| `AWS_REGION`         | Yes      | Aurora region set by Aurora integration                  |
+| `AWS_ROLE_ARN`       | Yes      | IAM role ARN set by Aurora integration                   |
+| `PGHOST`             | Yes      | Aurora cluster hostname set by Aurora integration        |
+| `PGUSER`             | Yes      | Database username set by Aurora integration              |
+| `PGDATABASE`         | Yes      | Database name set by Aurora integration                  |
+| `PGSSLMODE`          | Yes      | Must be `require` set by Aurora integration              |
 
 ---
 
@@ -121,7 +121,7 @@ After deploying, apply the schema by visiting:
 GET https://your-domain.vercel.app/api/migrate?secret=YOUR_MIGRATION_SECRET
 ```
 
-The endpoint is fully idempotent — it uses `CREATE TABLE IF NOT EXISTS` and
+The endpoint is fully idempotent it uses `CREATE TABLE IF NOT EXISTS` and
 `CREATE INDEX IF NOT EXISTS` throughout, so it is safe to re-run at any time.
 
 ---
@@ -175,7 +175,7 @@ Once inside the dashboard, complete setup in this sequence:
 
 **d. Add Products** → `/products`
 - Create products with: name, SKU, category, unit of measure, selling price, cost price, and reorder level
-- Stock quantity starts at `0` — it is populated entirely via Intake
+- Stock quantity starts at `0` it is populated entirely via Intake
 
 ---
 
@@ -184,7 +184,7 @@ Once inside the dashboard, complete setup in this sequence:
 1. Click **New Intake**
 2. Select the product and the delivering vendor
 3. Enter quantity received, unit cost, and expiry date (optional but recommended)
-4. Submit — the product's `stock_qty` increments by the entered quantity
+4. Submit the product's `stock_qty` increments by the entered quantity
 5. A batch record is created for full traceability (vendor, cost, date, expiry)
 
 Intake history is listed on `/intake` with the ability to drill into any batch record.
@@ -197,7 +197,7 @@ Intake history is listed on `/intake` with the ability to drill into any batch r
 2. Search for products and add them with quantities
 3. The system shows real-time stock availability and auto-calculates the total
 4. Select the payment method: cash, card, or bank transfer
-5. Submit — inventory is decremented immediately across all affected products
+5. Submit inventory is decremented immediately across all affected products
 6. A receipt is generated; it can be downloaded as a PDF from the sale detail page
 
 ---
@@ -206,8 +206,8 @@ Intake history is listed on `/intake` with the ability to drill into any batch r
 
 Trova surfaces two alert categories proactively:
 
-- **Low Stock** — products at or below their configured reorder level
-- **Expiring Soon** — batches with an expiry date within the alert window (default 7 days)
+- **Low Stock** products at or below their configured reorder level
+- **Expiring Soon** batches with an expiry date within the alert window (default 7 days)
 
 The alert count appears on the dashboard home page for all users. Owners and staff can navigate to `/alerts` to view every affected item and act on it directly (reorder, pull stock, etc.).
 
@@ -219,7 +219,7 @@ The alert count appears on the dashboard home page for all users. Owners and sta
 2. Enter the email address of a new team member and click **Send Invite**
 3. The invitee receives a unique join link at `/join?token=...`
 4. They create their account through the join page and are automatically linked to the owner's store with the `staff` role
-5. Staff can process sales, log intake, and manage products — but cannot view owner analytics or change store settings
+5. Staff can process sales, log intake, and manage products but cannot view owner analytics or change store settings
 
 To remove a team member, the owner can revoke their access from the team management table.
 
@@ -260,7 +260,7 @@ All colours, spacing, and radii are CSS custom properties defined in `app/global
 | `--bg-base`            | `#111111`   | Page background                    |
 | `--bg-nav`             | `#0D0D0D`   | Sidebar, topbar, bottom nav        |
 | `--bg-card`            | `#1E1E1E`   | Card and panel backgrounds         |
-| `--accent-primary`     | `#F5610A`   | Brand orange — CTAs, active states |
+| `--accent-primary`     | `#F5610A`   | Brand orange CTAs, active states |
 | `--text-primary`       | `#FFFFFF`   | Primary body text                  |
 | `--text-secondary`     | `#A3A3A3`   | Supporting text, labels            |
 | `--text-muted`         | `#666666`   | Placeholders, disabled states      |
