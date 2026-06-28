@@ -21,9 +21,20 @@ Trova is a full-stack inventory management application built for small-to-medium
 
 ```
 app/
-  page.tsx                    # Public landing page (Trova marketing)
+  page.tsx                    # Root page (redirects to /landing)
   layout.tsx                  # Root layout (fonts, metadata, providers)
   globals.css                 # Design tokens, Tailwind theme, utilities
+  landing/                    # Public landing page (Trova marketing)
+    page.tsx                  # Landing page entry point
+    nav.tsx                   # Navigation header
+    hero.tsx                  # Hero section
+    pain.tsx                  # Problem statement section
+    built-for.tsx             # Target audience section
+    features.tsx              # Feature showcase with interactive tabs
+    product-peek.tsx          # Product preview section
+    how-it-works.tsx          # Step-by-step guide
+    cta.tsx                   # Call-to-action section
+    footer.tsx                # Footer with links
   sign-in/                    # Auth pages
   sign-up/
   join/                       # Invitation acceptance flow
@@ -136,7 +147,7 @@ GET http://localhost:3000/api/migrate?secret=YOUR_MIGRATION_SECRET
 
 ### 1. Owner Sign-Up (First Run)
 
-1. Visit `trovainventory.com` and click **Get started**, or navigate directly to `/sign-up`
+1. Visit `https://trova-ims.vercel.app` and click **Get started**, or navigate directly to `/sign-up`
 2. Enter full name, email, and a password (minimum 8 characters)
 3. On the very first sign-up, Trova automatically:
    - Creates a new store named after the owner
