@@ -35,9 +35,16 @@ const trustedOrigins = Array.from(
   new Set(TRUSTED_ORIGINS_CONFIG.filter(Boolean) as string[])
 )
 
+if (!process.env.BETTER_AUTH_SECRET) {
+  throw new Error(
+    'BETTER_AUTH_SECRET is not set. Generate one with: openssl rand -base64 32'
+  )
+}
+
 export const auth = betterAuth({
   baseURL,
   trustedOrigins,
+  secret: process.env.BETTER_AUTH_SECRET,
   // Reuse the Aurora IAM-authenticated pool from lib/db — no DATABASE_URL needed
   database: pool,
   emailAndPassword: {
