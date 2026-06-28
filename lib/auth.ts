@@ -15,9 +15,29 @@ const baseURL =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
   'http://localhost:3000'
 
+// Build trusted origins list — includes production domain, preview domains, and custom domains
+// See TRUSTED_ORIGINS_CONFIG below to add new domains
+const TRUSTED_ORIGINS_CONFIG = [
+  // Production domain (from env var or derived from VERCEL_PROJECT_PRODUCTION_URL)
+  process.env.BETTER_AUTH_URL,
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null,
+  // Vercel preview deployments
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  // Add custom domains here (e.g., 'https://your-custom-domain.com')
+  // Users can also set TRUSTED_ORIGINS env var as comma-separated list
+  ...(process.env.TRUSTED_ORIGINS ? process.env.TRUSTED_ORIGINS.split(',').map(o => o.trim()) : []),
+  // Local development
+  'http://localhost:3000',
+  'http://localhost:3001',
+]
+
+const trustedOrigins = Array.from(
+  new Set(TRUSTED_ORIGINS_CONFIG.filter(Boolean) as string[])
+)
+
 export const auth = betterAuth({
   baseURL,
-  trustHost: true,
+  trustedOrigins,
   // Reuse the Aurora IAM-authenticated pool from lib/db — no DATABASE_URL needed
   database: pool,
   emailAndPassword: {
