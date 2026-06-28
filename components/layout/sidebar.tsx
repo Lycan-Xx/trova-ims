@@ -62,7 +62,9 @@ function NavItem({ href, icon: Icon, label, isActive, expanded }: NavItemProps) 
         whiteSpace: 'nowrap',
       }}
     >
-      <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={18} strokeWidth={isActive ? 2 : 1.75} />
+      </div>
       {expanded && (
         <span
           style={{
@@ -84,7 +86,7 @@ function NavItem({ href, icon: Icon, label, isActive, expanded }: NavItemProps) 
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
+      <TooltipTrigger>
         <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
           {item}
         </div>
