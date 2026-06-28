@@ -58,13 +58,13 @@ export function AuthForm({ mode }: AuthFormProps) {
               <path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/>
             </svg>
           </div>
-          <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>StockSmart</span>
+          <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Trova</span>
         </div>
         <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
           {mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
         </h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-          {mode === 'sign-in' ? 'Sign in to your store' : 'Set up your inventory store'}
+          {mode === 'sign-in' ? 'Sign in to your store' : 'Set up your Trova store'}
         </p>
       </div>
 
