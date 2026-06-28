@@ -160,3 +160,30 @@
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Responsive page padding — use on dashboard page wrappers */
+.page-pad {
+  padding: 1rem;
+}
+@media (min-width: 768px) {
+  .page-pad {
+    padding: 1.5rem;
+  }
+}
+
+/* Safe bottom padding for mobile (above bottom nav) */
+.mobile-safe-bottom {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .mobile-safe-bottom {
+    padding-bottom: 0;
+  }
+}
+
+/* CSS sidebar width variable (set by JS via Sidebar component) */
+:root {
+  --sidebar-w: 64px;
+}
+
+

@@ -29,18 +29,11 @@ export function Topbar() {
 
   return (
     <header
+      className="sticky top-0 z-30 flex items-center justify-between px-4 md:px-5"
       style={{
         height: 48,
         backgroundColor: 'var(--bg-nav)',
         borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingLeft: 20,
-        paddingRight: 20,
-        position: 'sticky',
-        top: 0,
-        zIndex: 30,
       }}
     >
       {/* Left: wordmark */}
@@ -78,7 +71,7 @@ export function Topbar() {
             letterSpacing: '-0.01em',
           }}
         >
-          StockSmart
+          Trova
         </span>
       </div>
 

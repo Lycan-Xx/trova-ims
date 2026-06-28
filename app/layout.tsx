@@ -18,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Stock Remake',
-  description: 'Inventory and stock management system',
+  title: 'Trova — Inventory Management',
+  description: 'Smart inventory and stock management for modern retail stores.',
   generator: 'v0.app',
   icons: {
     icon: [
