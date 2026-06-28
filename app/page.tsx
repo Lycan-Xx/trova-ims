@@ -7,6 +7,7 @@ import ProductPeek from '@/app/landing/product-peek'
 import HowItWorks from '@/app/landing/how-it-works'
 import Cta from '@/app/landing/cta'
 import Footer from '@/app/landing/footer'
+import { Console } from 'console'
 
 export const metadata = {
   title: 'Trova — Know your store, always.',
