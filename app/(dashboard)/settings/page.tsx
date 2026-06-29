@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
+import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
 
 export const metadata = { title: 'Settings — StockSmart' }
 
@@ -47,6 +48,29 @@ export default async function SettingsPage() {
       {isOwner && (
         <section>
           <TeamManagement isOwner={isOwner} />
+        </section>
+      )}
+
+      {/* Section C — Tutorial & Onboarding */}
+      {isOwner && (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+                Tutorial & Onboarding
+              </h2>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Reset the dashboard checklist to learn how to use the application.
+              </p>
+            </div>
+            <RestartTutorialButton />
+          </div>
         </section>
       )}
 
