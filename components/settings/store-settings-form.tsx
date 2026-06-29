@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { updateStoreSettings } from '@/app/actions/settings'
+import { SUPPORTED_CURRENCIES } from '@/lib/currency'
 
 const inputClass = [
   'w-full h-10 rounded-lg px-3 text-sm outline-none transition-all',
@@ -27,7 +28,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 interface Props {
-  store: { id: string; name: string; address: string | null; phone: string | null }
+  store: { id: string; name: string; address: string | null; phone: string | null; currency: string }
 }
 
 export function StoreSettingsForm({ store }: Props) {
@@ -35,6 +36,7 @@ export function StoreSettingsForm({ store }: Props) {
   const [name, setName] = React.useState(store.name ?? '')
   const [address, setAddress] = React.useState(store.address ?? '')
   const [phone, setPhone] = React.useState(store.phone ?? '')
+  const [currency, setCurrency] = React.useState(store.currency ?? 'NGN')
   const [loading, setLoading] = React.useState(false)
   const [saved, setSaved] = React.useState(false)
   const [nameError, setNameError] = React.useState('')
@@ -54,6 +56,7 @@ export function StoreSettingsForm({ store }: Props) {
         name: name.trim(),
         address: address.trim() || undefined,
         phone: phone.trim() || undefined,
+        currency,
       })
 
       if (!result.success) {
@@ -86,6 +89,21 @@ export function StoreSettingsForm({ store }: Props) {
         {nameError && (
           <p className="mt-1 text-[11px]" style={{ color: 'var(--danger)' }}>{nameError}</p>
         )}
+      </Field>
+
+      {/* Currency */}
+      <Field label="Currency *">
+        <select
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+          className={inputClass}
+        >
+          {SUPPORTED_CURRENCIES.map(({ code, name: currencyName }) => (
+            <option key={code} value={code}>
+              {code} — {currencyName}
+            </option>
+          ))}
+        </select>
       </Field>
 
       {/* Phone */}
@@ -137,3 +155,4 @@ export function StoreSettingsForm({ store }: Props) {
     </form>
   )
 }
+

@@ -11,10 +11,11 @@ export async function updateStoreSettings(formData: {
   name: string
   address?: string
   phone?: string
+  currency?: string
 }): Promise<{ success: true } | { success: false; error: string }> {
   const user = await requireOwner()
 
-  const { name, address, phone } = formData
+  const { name, address, phone, currency } = formData
 
   if (!name?.trim()) return { success: false, error: 'Store name is required.' }
   if (name.trim().length > 120) return { success: false, error: 'Store name must be 120 characters or fewer.' }
@@ -22,9 +23,9 @@ export async function updateStoreSettings(formData: {
   try {
     await query(
       `UPDATE stores
-       SET name = $1, address = $2, phone = $3
-       WHERE id = $4`,
-      [name.trim(), address?.trim() || null, phone?.trim() || null, user.store_id],
+       SET name = $1, address = $2, phone = $3, currency = COALESCE($4, currency)
+       WHERE id = $5`,
+      [name.trim(), address?.trim() || null, phone?.trim() || null, currency || null, user.store_id],
     )
     return { success: true }
   } catch (err) {
@@ -36,7 +37,7 @@ export async function updateStoreSettings(formData: {
 // ── getStoreSettings ───────────────────────────────────────────────────────────
 
 export async function getStoreSettings(): Promise<
-  { success: true; data: { id: string; name: string; address: string | null; phone: string | null } } |
+  { success: true; data: { id: string; name: string; address: string | null; phone: string | null; currency: string } } |
   { success: false; error: string }
 > {
   const user = await getCurrentUser()
@@ -44,11 +45,11 @@ export async function getStoreSettings(): Promise<
 
   try {
     const res = await query(
-      'SELECT id, name, address, phone FROM stores WHERE id = $1 LIMIT 1',
+      'SELECT id, name, address, phone, currency FROM stores WHERE id = $1 LIMIT 1',
       [user.store_id],
     )
     if (res.rows.length === 0) return { success: false, error: 'Store not found.' }
-    return { success: true, data: res.rows[0] as { id: string; name: string; address: string | null; phone: string | null } }
+    return { success: true, data: res.rows[0] as { id: string; name: string; address: string | null; phone: string | null; currency: string } }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch store settings.'
     return { success: false, error: message }
