@@ -139,6 +139,11 @@ export function AuthForm({ mode }: AuthFormProps) {
           </>
         )}
       </p>
+
+      {/* Legal Links */}
+      <div className="mt-6 pt-4 border-t text-center text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+        <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+      </div>
     </div>
   )
 }

@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 
 const BARS = [
   { day: 'M', pct: 42 },
@@ -10,7 +13,27 @@ const BARS = [
   { day: 'S', pct: 58 },
 ]
 
+const CURRENCIES = [
+  { symbol: '₦', code: 'NGN', name: 'Nigerian Naira' },
+  { symbol: '$', code: 'USD', name: 'US Dollar' },
+  { symbol: '€', code: 'EUR', name: 'Euro' },
+  { symbol: '£', code: 'GBP', name: 'British Pound' },
+  { symbol: '¥', code: 'JPY', name: 'Japanese Yen' },
+  { symbol: '₹', code: 'INR', name: 'Indian Rupee' },
+]
+
 export default function Hero() {
+  const [currentCurrencyIndex, setCurrentCurrencyIndex] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentCurrencyIndex((prev) => (prev + 1) % CURRENCIES.length)
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const currentCurrency = CURRENCIES[currentCurrencyIndex]
+
   return (
     <section className="relative overflow-hidden min-h-[calc(100vh-56px)] flex items-center">
       {/* Subtle grid texture */}
@@ -45,8 +68,14 @@ export default function Hero() {
             className="leading-relaxed text-[var(--text-secondary)] max-w-[360px] mb-10"
             style={{ fontSize: 'clamp(15px, 1.8vw, 17px)' }}
           >
-            Trova tracks every item, every batch, every naira — from the moment
-            goods arrive to the moment a receipt is printed.
+            Trova tracks every item, every batch, every{' '}
+            <span 
+              className="inline-block min-w-[28px] transition-all duration-300 font-semibold text-[var(--accent-primary)]"
+              title={currentCurrency.name}
+            >
+              {currentCurrency.symbol}
+            </span>
+            {' '}— from the moment goods arrive to the moment a receipt is printed.
           </p>
 
           <Link

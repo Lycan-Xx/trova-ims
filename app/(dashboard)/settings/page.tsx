@@ -87,6 +87,13 @@ export default async function SettingsPage() {
           Settings are managed by the store owner. Contact your owner to make changes.
         </div>
       )}
+
+      {/* Legal Links */}
+      <div className="flex items-center justify-center gap-4 py-8 text-xs" style={{ color: 'var(--text-muted)' }}>
+        <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+        <span>•</span>
+        <span>© {new Date().getFullYear()} Trova</span>
+      </div>
     </main>
   )
 }

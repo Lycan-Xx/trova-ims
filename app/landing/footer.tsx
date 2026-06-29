@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 export default function Footer() {
   return (
     <footer
@@ -24,10 +26,13 @@ export default function Footer() {
         </span>
       </div>
 
-      {/* Tagline */}
-      <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-        Know your store, always.
-      </p>
+      {/* Links */}
+      <div className="flex items-center gap-6 text-[12px]">
+        <Link href="/privacy" style={{ color: 'var(--text-muted)' }} className="hover:text-white transition-colors">
+          Privacy Policy
+        </Link>
+        <p style={{ color: 'var(--text-muted)' }}>Know your store, always.</p>
+      </div>
 
       {/* Copyright */}
       <p className="text-[12px]" style={{ color: 'var(--border)' }}>
