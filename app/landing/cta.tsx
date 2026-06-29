@@ -1,42 +1,69 @@
-'use client'
-
 import Link from 'next/link'
 
 export default function Cta() {
   return (
-    <section className="py-32 px-6 md:px-10">
-      <div className="max-w-3xl mx-auto text-center">
+    <section
+      className="relative overflow-hidden py-28 md:py-36 px-6 md:px-10 border-t"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      {/* ── Radial glow rising from bottom ── */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        aria-hidden="true"
+        style={{
+          background:
+            'radial-gradient(ellipse 70% 55% at 50% 110%, rgba(245,97,10,0.09) 0%, transparent 70%)',
+        }}
+      />
 
+      {/* ── Thin orange accent line centered at the top edge ── */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-20"
+        style={{ backgroundColor: 'var(--accent-primary)', opacity: 0.7 }}
+        aria-hidden="true"
+      />
+
+      {/* ── Content ── */}
+      <div className="relative max-w-2xl mx-auto text-center">
+
+        {/* Eyebrow */}
+        <p
+          className="text-[11px] font-semibold uppercase tracking-[0.14em] mb-6"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Get started
+        </p>
+
+        {/* Headline */}
         <h2
-          className="font-bold tracking-tight leading-[1.0] mb-6"
+          className="font-bold tracking-tight leading-[1.0] mb-5"
           style={{
-            fontSize: 'clamp(36px, 5.5vw, 68px)',
+            fontSize: 'clamp(34px, 5.5vw, 64px)',
             color: 'var(--text-primary)',
           }}
         >
-          Ready to run a<br />
-          <span style={{ color: 'var(--accent-primary)' }}>tighter store?</span>
+          Run a tighter store.
+          <br />
+          <span style={{ color: 'var(--accent-primary)' }}>
+            Starting today.
+          </span>
         </h2>
 
+        {/* Sub-copy */}
         <p
-          className="text-[16px] mb-10 max-w-xs mx-auto leading-relaxed"
+          className="text-[15px] leading-relaxed mb-10 max-w-sm mx-auto"
           style={{ color: 'var(--text-secondary)' }}
         >
           Create your free Trova account. First batch logged in under a minute.
         </p>
 
+        {/* Primary CTA */}
         <Link
           href="/sign-up"
-          className="inline-flex items-center gap-2.5 text-white text-[15px] font-semibold px-8 py-4 rounded-xl transition-colors duration-150"
-          style={{ backgroundColor: 'var(--accent-primary)' }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.backgroundColor = 'var(--accent-primary-hover)')
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = 'var(--accent-primary)')
-          }
+          className="inline-flex items-center gap-2.5 text-white font-semibold px-8 py-4 rounded-xl transition-opacity duration-150 hover:opacity-90 whitespace-nowrap"
+          style={{ backgroundColor: 'var(--accent-primary)', fontSize: 15 }}
         >
-          Create your store, it&apos;s free
+          Create your store — it&apos;s free
           <svg
             width="14"
             height="14"
@@ -54,26 +81,13 @@ export default function Cta() {
           </svg>
         </Link>
 
-        {/* Trust line */}
-        <div
-          className="mt-8 flex items-center justify-center gap-5 flex-wrap"
+        {/* Trust micro-copy */}
+        <p
+          className="mt-5 text-[12px]"
           style={{ color: 'var(--text-muted)' }}
         >
-          {['No credit card required', 'Free to start', 'Cancel anytime'].map(
-            (t, i) => (
-              <span key={t} className="flex items-center gap-4 text-[12px]">
-                {i > 0 && (
-                  <span
-                    className="w-1 h-1 rounded-full"
-                    style={{ backgroundColor: 'var(--border)' }}
-                    aria-hidden="true"
-                  />
-                )}
-                {t}
-              </span>
-            )
-          )}
-        </div>
+          No credit card &nbsp;·&nbsp; No setup fee &nbsp;·&nbsp; Cancel anytime
+        </p>
       </div>
     </section>
   )
