@@ -1,6 +1,8 @@
 # Trova Inventory Management System
 
-Trova is a full-stack inventory management application built for small-to-medium retail stores. It handles the complete retail lifecycle: supplier intake, product cataloguing, point-of-sale, vendor relationships, expiry/stock alerts, and owner-level analytics. The entire system is multi-tenant by design each store is isolated, and every user belongs to exactly one store with a defined role.
+![Trova Dashboard](./public/images/auth-page.png)
+
+Trova is a full-stack inventory management application built for small-to-medium retail stores. It handles the complete retail lifecycle: supplier intake, product cataloguing, point-of-sale, vendor relationships, expiry/stock alerts, and owner-level analytics. The entire system is multi-tenant by design—each store is isolated, and every user belongs to exactly one store with a defined role. Multi-currency support enables seamless operations across different markets with real-time currency formatting.
 
 ---
 
@@ -24,6 +26,7 @@ app/
   page.tsx                    # Root page (redirects to /landing)
   layout.tsx                  # Root layout (fonts, metadata, providers)
   globals.css                 # Design tokens, Tailwind theme, utilities
+  not-found.tsx               # Custom 404 page
   landing/                    # Public landing page (Trova marketing)
     page.tsx                  # Landing page entry point
     nav.tsx                   # Navigation header
@@ -34,67 +37,134 @@ app/
     product-peek.tsx          # Product preview section
     how-it-works.tsx          # Step-by-step guide
     cta.tsx                   # Call-to-action section
-    footer.tsx                # Footer with links
+    footer.tsx                # Footer with social links
+  privacy/                    # Privacy policy page
   sign-in/                    # Auth pages
   sign-up/
   join/                       # Invitation acceptance flow
-  (dashboard)/                # Protected app requires active session
-    layout.tsx                # Sidebar + topbar shell
+  (dashboard)/                # Protected app (requires active session)
+    layout.tsx                # Sidebar + topbar shell with currency context
     dashboard/                # Home page with stats + weekly chart
     products/                 # Product catalogue + detail slide-over
+      [id]/                   # Product detail page
     intake/                   # Stock intake (batch logging)
+      new/                    # Record new intake form
+      [id]/                   # Batch detail page
     sales/                    # POS + sale history + PDF receipts
+      new/                    # Create new sale
+      [id]/                   # Sale detail + receipt
     vendors/                  # Supplier management
+      [id]/                   # Vendor detail page
     alerts/                   # Low stock + expiry alerts
     analytics/                # Revenue, trends, top products
     settings/                 # Store settings + team management
   api/
-    auth/                     # Better Auth handler
+    auth/[...all]/            # Better Auth handler
     migrate/                  # Schema migration endpoint (idempotent)
+    migrate-currency/         # Currency migration helper
     purge/                    # Database purge endpoint (dev/reset only)
+    test-suite/               # Test utilities
 
 components/
   layout/
-    sidebar.tsx               # Collapsible icon-only / full-label sidebar (desktop)
+    sidebar.tsx               # Expandable sidebar (always expanded on desktop)
     mobile-nav.tsx            # Bottom tab bar with More drawer (mobile)
-    topbar.tsx                # App header wordmark, alerts, sign-out, avatar
-  auth/auth-form.tsx
-  dashboard/weekly-chart.tsx
-  products/ vendors/ sales/ intake/ analytics/ settings/
-  ui/                         # Shared primitives (stat-card, badge, button…)
+    topbar.tsx                # App header with alerts, sign-out, avatar
+  auth/
+    auth-form.tsx             # Sign in / sign up form
+    auth-layout.tsx           # Auth page wrapper
+  dashboard/
+    weekly-chart.tsx          # Weekly revenue bar chart
+    onboarding-checklist.tsx  # First-run setup guide
+  products/
+    product-list.tsx          # Product table with filtering
+    product-slide-over.tsx    # Add/edit product slide panel
+    category-select.tsx       # Category selector component
+  intake/
+    intake-list.tsx           # Stock intake table with batch reference
+    intake-form.tsx           # Record intake form
+  sales/
+    sales-list.tsx            # Sales history with item count
+    receipt-pdf.tsx           # Receipt PDF template
+    receipt-download-button.tsx # PDF export functionality
+  vendors/
+    vendor-list.tsx           # Vendor table
+    vendor-slide-over.tsx     # Add/edit vendor slide panel
+    vendor-csv-button.tsx     # CSV export
+    vendor-detail-client.tsx  # Vendor detail view
+  analytics/
+    analytics-panels.tsx      # Revenue, top products, margins analysis
+    date-range-filter.tsx     # Date filter component
+  settings/
+    store-settings-form.tsx   # Store info, currency, thresholds
+    team-members-table.tsx    # Team management with invites
+    team-management.tsx       # Team invite/revoke logic
+    restart-tutorial-button.tsx # Onboarding reset
+  providers/
+    currency-provider.tsx     # Multi-currency context
+  ui/                         # Shared primitives
+    stat-card.tsx, badge.tsx, button.tsx, select.tsx, sheet.tsx, etc.
+  legal/
+    privacy-policy.tsx        # Privacy policy content
 
 lib/
-  auth.ts                     # Better Auth server config reuses Aurora pool
+  auth.ts                     # Better Auth server config
   auth-client.ts              # Better Auth browser client
-  auth/first-run.ts           # Auto store creation on first ever sign-up
+  currency.ts                 # Currency formatting utilities
+  currency-context.ts         # React context for multi-currency
   db/
     index.ts                  # Aurora pool with automatic IAM token rotation
     schema.ts                 # TypeScript types for all database tables
     helpers.ts                # Typed query helpers
-  utils.ts
+  utils.ts                    # General utilities
+  actions/                    # Server actions for data mutations
 ```
 
 ---
 
-## Database Schema
+## Multi-Currency Support
+
+Trova supports multi-currency operations, allowing stores to operate seamlessly across different markets:
+
+- **Store Currency Configuration**: Each store selects its trading currency during setup (NGN, USD, GBP, etc.)
+- **Currency Context**: The `CurrencyProvider` makes the store's currency available throughout the app via React Context
+- **Dynamic Formatting**: All monetary values are formatted with locale-specific symbols and decimal rules using `formatCurrency()` utility
+- **Consistent Display**: Product prices, sale totals, analytics, and batch costs all respect the store's configured currency
+- **Batch Price Tracking**: Each stock batch records its cost in the store's currency at the time of intake
+- **Analytics by Currency**: Revenue calculations, margins, and trends all operate in the store's currency
+
+Currency codes and symbols are centrally managed in `lib/currency.ts` for easy maintenance and consistency.
+
+---
 
 The application uses 8 domain tables plus 4 Better Auth system tables:
 
 ```
 stores        one row per store (name, currency, low_stock_threshold)
-users         app users linked to a store, role: owner | staff
+users         app users linked to a store (role: owner | staff)
 categories    product groupings scoped per store
-vendors       supplier records, type: direct | consignment
+vendors       supplier records (type: direct | consignment)
 products      SKUs with cost, price, stock_qty, reorder_level
-batches       stock intake records linked to product + vendor + expiry
-sales         transaction headers (total, payment method, served_by)
-sale_items    line items per sale (product, qty, unit_price)
+batches       stock intake records (product, vendor, expiry, reference_number)
+sales         transaction headers (receipt_number, total, payment_method)
+sale_items    line items per sale (product, qty, unit_price, batch_ref)
 
 "user"        Better Auth identity (email, hashed password)
 session       active user sessions
 account       credential storage (OAuth-compatible)
 verification  email verification tokens
 ```
+
+Key fields by feature:
+
+| Feature                | Table          | Key Fields                               |
+|------------------------|----------------|------------------------------------------|
+| Multi-currency         | `stores`       | `currency` (stored code: NGN, USD, GBP)  |
+| Batch tracking         | `batches`      | `reference_number`, `received_at`        |
+| Sales line items       | `sale_items`   | `product_id`, `qty_sold`, `unit_price`   |
+| Expiry management      | `batches`      | `expiry_date` (nullable, for tracking)    |
+| Stock deduction (FEFO) | `batches`      | `qty_remaining` (decremented on sale)     |
+| Consignment handling   | `batches`      | `is_consignment` (boolean)                |
 
 ---
 
@@ -126,7 +196,33 @@ The endpoint is fully idempotent it uses `CREATE TABLE IF NOT EXISTS` and
 
 ---
 
-## Local Development
+## Recent Improvements
+
+### v1.1.0 Updates
+- **Always-Expanded Sidebar on Desktop**: Desktop users now see the full sidebar by default with labels visible, improving navigation clarity. Mobile users can still collapse it.
+- **Batch Reference Tracking**: All stock intake records now display a batch reference number for easier tracking and audit trails.
+- **Sales Item Count**: Sales history now shows the number of items in each transaction for quick overview.
+- **Mobile-Optimized Forms**: Fixed scrolling issues in add product and add vendor slide panels on mobile devices.
+- **Fixed Chart Rendering**: Dashboard weekly chart now properly displays with correct sizing and data.
+
+---
+
+## Key Features
+
+| Feature                    | Description                                         |
+|----------------------------|-----------------------------------------------------|
+| **Multi-Tenant Isolation** | Each store operates independently with no data leakage |
+| **Role-Based Access**      | Owner / Staff roles with granular permission control |
+| **Multi-Currency Support** | Track inventory and sales in any supported currency |
+| **FEFO Inventory**         | First-Expiry-First-Out batch deduction on sales    |
+| **Consignment Tracking**   | Separate handling for consignment vs. purchased stock |
+| **Real-Time Alerts**       | Low stock and expiry warnings on dashboard          |
+| **PDF Receipts**           | Generated sales receipts with full transaction details |
+| **Analytics Dashboard**    | Revenue trends, top products, margin analysis      |
+| **Team Collaboration**     | Invite staff with secure token-based onboarding    |
+| **CSV Export**             | Vendor and product data export for external analysis |
+
+---
 
 ```bash
 pnpm install
