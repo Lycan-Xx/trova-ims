@@ -98,7 +98,7 @@ function NavItem({ href, icon: Icon, label, isActive, expanded }: NavItemProps) 
 
 export function Sidebar() {
   const pathname = usePathname()
-  const [expanded, setExpanded] = React.useState(false)
+  const [expanded, setExpanded] = React.useState(true)
   const width = expanded ? EXPANDED_W : COLLAPSED_W
 
   // Propagate sidebar width to the layout via CSS custom property
@@ -194,11 +194,12 @@ export function Sidebar() {
           expanded={expanded}
         />
 
-        {/* Collapse toggle */}
+        {/* Collapse toggle — hidden on desktop, visible on mobile */}
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          className="md:hidden"
           style={{
             display: 'flex',
             alignItems: 'center',

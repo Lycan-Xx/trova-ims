@@ -21,6 +21,7 @@ function RevenueTooltip({
   active,
   payload,
   label,
+  fmtCurrency,
 }: {
   active?: boolean
   payload?: { value: number }[]
@@ -28,6 +29,7 @@ function RevenueTooltip({
   fmtCurrency: (n: number) => string
 }) {
   if (!active || !payload?.length) return null
+  const fmt = fmtCurrency || ((n: number) => String(n))
   return (
     <div
       className="px-3 py-2 rounded-lg text-xs shadow-lg"
@@ -38,7 +40,7 @@ function RevenueTooltip({
       }}
     >
       <p style={{ color: 'var(--text-muted)' }}>{label}</p>
-      <p className="font-semibold mt-0.5">{fmtCurrency(payload[0].value)}</p>
+      <p className="font-semibold mt-0.5">{fmt(payload[0].value)}</p>
     </div>
   )
 }
@@ -67,35 +69,37 @@ export function WeeklyChart({ data, currencySymbol }: WeeklyChartProps) {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={200}>
-      <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-        <CartesianGrid
-          strokeDasharray="3 3"
-          vertical={false}
-          stroke="var(--border)"
-        />
-        <XAxis
-          dataKey="date"
-          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-          axisLine={false}
-          tickLine={false}
-          tickFormatter={(v: number) =>
-            v >= 1000 ? currencySymbol + (v / 1000).toFixed(0) + 'k' : currencySymbol + v
-          }
-        />
-        <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: 'var(--bg-card-hover)' }} />
-        <Bar
-          dataKey="revenue"
-          fill="var(--accent-primary)"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={40}
-        />
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="w-full h-[200px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="var(--border)"
+          />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v: number) =>
+              v >= 1000 ? currencySymbol + (v / 1000).toFixed(0) + 'k' : currencySymbol + v
+            }
+          />
+          <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: 'var(--bg-card-hover)' }} />
+          <Bar
+            dataKey="revenue"
+            fill="var(--accent-primary)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={40}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   )
 }

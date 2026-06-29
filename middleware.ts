@@ -10,6 +10,7 @@ const PUBLIC_PREFIXES = [
   '/api/test-suite',
   '/api/webhooks',
   '/privacy',
+  '/landing',
 ]
 
 export function middleware(request: NextRequest) {
