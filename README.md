@@ -19,106 +19,46 @@ Trova is a full-stack inventory management application built for small-to-medium
 
 ---
 
+## Architecture
+
+```mermaid
+graph TD
+    Client[Client Browser] -->|HTTPS| Vercel[Vercel Edge / Serverless]
+    Vercel --> NextApp[Next.js App Server]
+    
+    subgraph Trova Core
+        NextApp --> Actions[Server Actions]
+        NextApp --> API[API Routes]
+        Actions --> DB_Helper[DB Helpers]
+        API --> Auth[Better Auth]
+    end
+    
+    DB_Helper -->|IAM Auth| DB[(Amazon Aurora PostgreSQL)]
+    Auth -->|IAM Auth| DB
+```
+
+---
+
 ## Project Structure
 
-```
-app/
-  page.tsx                    # Root page (redirects to /landing)
-  layout.tsx                  # Root layout (fonts, metadata, providers)
-  globals.css                 # Design tokens, Tailwind theme, utilities
-  not-found.tsx               # Custom 404 page
-  landing/                    # Public landing page (Trova marketing)
-    page.tsx                  # Landing page entry point
-    nav.tsx                   # Navigation header
-    hero.tsx                  # Hero section
-    pain.tsx                  # Problem statement section
-    built-for.tsx             # Target audience section
-    features.tsx              # Feature showcase with interactive tabs
-    product-peek.tsx          # Product preview section
-    how-it-works.tsx          # Step-by-step guide
-    cta.tsx                   # Call-to-action section
-    footer.tsx                # Footer with social links
-  privacy/                    # Privacy policy page
-  sign-in/                    # Auth pages
-  sign-up/
-  join/                       # Invitation acceptance flow
-  (dashboard)/                # Protected app (requires active session)
-    layout.tsx                # Sidebar + topbar shell with currency context
-    dashboard/                # Home page with stats + weekly chart
-    products/                 # Product catalogue + detail slide-over
-      [id]/                   # Product detail page
-    intake/                   # Stock intake (batch logging)
-      new/                    # Record new intake form
-      [id]/                   # Batch detail page
-    sales/                    # POS + sale history + PDF receipts
-      new/                    # Create new sale
-      [id]/                   # Sale detail + receipt
-    vendors/                  # Supplier management
-      [id]/                   # Vendor detail page
-    alerts/                   # Low stock + expiry alerts
-    analytics/                # Revenue, trends, top products
-    settings/                 # Store settings + team management
-  api/
-    auth/[...all]/            # Better Auth handler
-    migrate/                  # Schema migration endpoint (idempotent)
-    migrate-currency/         # Currency migration helper
-    purge/                    # Database purge endpoint (dev/reset only)
-    test-suite/               # Test utilities
+The codebase is organized following standard Next.js App Router conventions, cleanly separating routes, components, and server logic.
 
-components/
-  layout/
-    sidebar.tsx               # Expandable sidebar (always expanded on desktop)
-    mobile-nav.tsx            # Bottom tab bar with More drawer (mobile)
-    topbar.tsx                # App header with alerts, sign-out, avatar
-  auth/
-    auth-form.tsx             # Sign in / sign up form
-    auth-layout.tsx           # Auth page wrapper
-  dashboard/
-    weekly-chart.tsx          # Weekly revenue bar chart
-    onboarding-checklist.tsx  # First-run setup guide
-  products/
-    product-list.tsx          # Product table with filtering
-    product-slide-over.tsx    # Add/edit product slide panel
-    category-select.tsx       # Category selector component
-  intake/
-    intake-list.tsx           # Stock intake table with batch reference
-    intake-form.tsx           # Record intake form
-  sales/
-    sales-list.tsx            # Sales history with item count
-    receipt-pdf.tsx           # Receipt PDF template
-    receipt-download-button.tsx # PDF export functionality
-  vendors/
-    vendor-list.tsx           # Vendor table
-    vendor-slide-over.tsx     # Add/edit vendor slide panel
-    vendor-csv-button.tsx     # CSV export
-    vendor-detail-client.tsx  # Vendor detail view
-  analytics/
-    analytics-panels.tsx      # Revenue, top products, margins analysis
-    date-range-filter.tsx     # Date filter component
-  settings/
-    store-settings-form.tsx   # Store info, currency, thresholds
-    team-members-table.tsx    # Team management with invites
-    team-management.tsx       # Team invite/revoke logic
-    restart-tutorial-button.tsx # Onboarding reset
-  providers/
-    currency-provider.tsx     # Multi-currency context
-  ui/                         # Shared primitives
-    stat-card.tsx, badge.tsx, button.tsx, select.tsx, sheet.tsx, etc.
-  legal/
-    privacy-policy.tsx        # Privacy policy content
+### `app/` (Routing & Pages)
+- **`/(dashboard)`**: Protected routes requiring an active session. Contains all core features like `/dashboard`, `/products`, `/sales`, `/intake`, etc.
+- **`/landing`**: Public marketing pages and components.
+- **`/api`**: Serverless API endpoints, primarily for authentication (`/api/auth/[...all]`) and database management (`/api/migrate`).
+- **Auth Routes**: `/sign-in`, `/sign-up`, and `/join` for user onboarding.
 
-lib/
-  auth.ts                     # Better Auth server config
-  auth-client.ts              # Better Auth browser client
-  currency.ts                 # Currency formatting utilities
-  currency-context.ts         # React context for multi-currency
-  db/
-    index.ts                  # Aurora pool with automatic IAM token rotation
-    schema.ts                 # TypeScript types for all database tables
-    helpers.ts                # Typed query helpers
-  utils.ts                    # General utilities
-  actions/                    # Server actions for data mutations
-```
+### `components/` (UI Components)
+- **`/layout`**: App shell elements (sidebar, mobile nav, topbar).
+- **`/ui`**: Shared, reusable UI primitives (buttons, inputs, dialogs) built with Tailwind and shadcn/ui.
+- **Feature Modules**: Grouped by domain (`/sales`, `/products`, `/intake`, `/analytics`, `/settings`) for better encapsulation.
+
+### `lib/` (Core Logic & Utilities)
+- **`/db`**: Database schema definitions (`schema.ts`), connection pool with automatic IAM token rotation (`index.ts`), and typed query helpers.
+- **`/auth`**: Better Auth configuration (`auth.ts`) and Role-Based Access Control (RBAC) utilities (`role-access.ts`).
+- **`/actions`**: Next.js Server Actions handling secure backend data mutations.
+- **Utilities**: Currency formatting, context providers, and general helper functions.
 
 ---
 
@@ -197,6 +137,10 @@ The endpoint is fully idempotent it uses `CREATE TABLE IF NOT EXISTS` and
 ---
 
 ## Recent Improvements
+
+### v1.2.0 Updates
+- **Role-Based Access Control (RBAC)**: Expanded roles from just Owner/Staff to Owner, Storekeeper, and Cashier. Navigation is now fully dynamic based on permissions, and strict route guards prevent unauthorized access without throwing server errors.
+- **Responsive Sales Page**: The `/sales/new` POS interface is now fully responsive. On mobile, it utilizes a vertical stack and a slide-up checkout drawer, optimizing screen space for small devices.
 
 ### v1.1.0 Updates
 - **Always-Expanded Sidebar on Desktop**: Desktop users now see the full sidebar by default with labels visible, improving navigation clarity. Mobile users can still collapse it.
@@ -333,17 +277,18 @@ To remove a team member, the owner can revoke their access from the team managem
 
 ## Role Permissions
 
-| Feature                    | Owner | Staff          |
-|----------------------------|:-----:|:--------------:|
-| Process sales              | Yes   | Yes            |
-| Log stock intake           | Yes   | Yes            |
-| Manage products            | Yes   | Yes            |
-| Manage vendors             | Yes   | Yes            |
-| View & action alerts       | Yes   | Yes            |
-| View dashboard stats       | Yes   | Alerts only    |
-| View full analytics        | Yes   | No             |
-| Manage store settings      | Yes   | No             |
-| Invite / remove team       | Yes   | No             |
+| Feature                    | Owner | Storekeeper | Cashier |
+|----------------------------|:-----:|:-----------:|:-------:|
+| View Dashboard             | Yes   | Yes         | Alerts only |
+| View Products              | Yes   | Yes         | Yes     |
+| Add / Edit Products        | Yes   | Yes         | No      |
+| View / Edit Vendors        | Yes   | Yes         | No      |
+| Log Stock Intake           | Yes   | Yes         | No      |
+| Process Sales (POS)        | Yes   | Yes         | Yes     |
+| View Sales History         | All   | All         | Own only|
+| View & Action Alerts       | Yes   | Yes         | No      |
+| View Full Analytics        | Yes   | No          | No      |
+| Manage Store Settings      | Yes   | No          | No      |
 
 ---
 
@@ -377,3 +322,9 @@ Merging to `main` triggers a production deployment automatically.
 The Amazon Aurora PostgreSQL integration is connected at the Vercel project level and
 injects all `PG*` and `AWS_*` environment variables into the runtime automatically.
 No manual credential management is required after the initial integration setup.
+
+---
+
+## License
+
+This project is licensed under the terms of the [LICENSE](./LICENSE) file.

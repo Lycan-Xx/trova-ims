@@ -113,7 +113,7 @@ export default function Footer() {
               style={{ color: 'var(--text-muted)' }}
             >
               Know your store, always. Inventory, sales, vendors, and analytics
-              in one place — built for retail stores that can&apos;t afford to
+              in one place, built for retail stores that can&apos;t afford to
               guess.
             </p>
           </div>
