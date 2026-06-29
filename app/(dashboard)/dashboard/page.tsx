@@ -96,9 +96,11 @@ export default async function DashboardPage() {
       </div>
 
       {/* Onboarding Joyride Tour */}
+      {/* 
       {isOwner && onboardingState && !onboardingState.isDismissed && (
         <OnboardingJoyride state={onboardingState} />
       )}
+      */}
 
       {/* Alert banner */}
       {alertCount > 0 && (
