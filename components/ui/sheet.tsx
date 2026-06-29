@@ -32,7 +32,7 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
     <div
       ref={ref}
       className={cn(
-        'fixed z-50 top-0 bottom-0 flex flex-col',
+        'fixed z-50 top-0 bottom-0 flex flex-col overflow-hidden',
         'w-full sm:w-[480px]',
         side === 'right' ? 'right-0' : 'left-0',
         className,

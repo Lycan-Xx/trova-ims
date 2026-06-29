@@ -7,12 +7,12 @@ const STEPS = [
   {
     n: '02',
     title: 'Add your products and suppliers',
-    body: 'Build your product catalogue — names, categories, selling prices, and reorder thresholds. Add the vendors you buy from, direct or consignment.',
+    body: 'Build your product catalogue names, categories, selling prices, and reorder thresholds. Add the vendors you buy from, direct or consignment.',
   },
   {
     n: '03',
     title: 'Log every delivery as it arrives',
-    body: 'Each incoming delivery is recorded as a batch — vendor, quantity, cost per unit, expiry date. Your stock levels are always accurate because they reflect what actually came in.',
+    body: 'Each incoming delivery is recorded as a batch vendor, quantity, cost per unit, expiry date. Your stock levels are always accurate because they reflect what actually came in.',
   },
   {
     n: '04',

@@ -17,7 +17,7 @@ export function AuthLayout({
       {/* Full-screen Background */}
       <div className="absolute inset-0 z-0">
         <Image
-          src="/images/auth-page.png"
+          src="/images/store.png"
           alt="Inventory management"
           fill
           priority

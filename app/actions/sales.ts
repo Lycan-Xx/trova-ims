@@ -52,6 +52,7 @@ export interface SaleRow {
   payment_method: string
   notes: string | null
   created_at: string
+  items_count: number
 }
 
 export interface SaleDetail extends SaleRow {
@@ -329,7 +330,8 @@ export async function getSales(filters?: {
          s.change_given,
          s.payment_method,
          s.notes,
-         s.created_at
+         s.created_at,
+         (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id)::int AS items_count
        FROM sales s
        LEFT JOIN users u ON u.id = s.cashier_id
        WHERE ${where}

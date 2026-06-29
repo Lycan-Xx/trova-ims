@@ -7,7 +7,7 @@ export default function NotFound() {
       {/* Full-screen Background with darker overlay */}
       <div className="absolute inset-0 z-0">
         <Image
-          src="/images/auth-page.png"
+          src="/images/not-found.jpg"
           alt="404 Background"
           fill
           priority

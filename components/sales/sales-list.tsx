@@ -282,10 +282,10 @@ export function SalesList({
                     </span>
                   </td>
 
-                  {/* Items count — not available from SaleRow list; show dash */}
+                  {/* Items count */}
                   <td className="px-4 py-3">
                     <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      —
+                      {sale.items_count} {sale.items_count === 1 ? 'item' : 'items'}
                     </span>
                   </td>
 
