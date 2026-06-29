@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/auth'
+import { requireOwner } from '@/lib/auth'
 import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
@@ -8,10 +8,8 @@ import { RestartTutorialButton } from '@/components/settings/restart-tutorial-bu
 export const metadata = { title: 'Settings — StockSmart' }
 
 export default async function SettingsPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect('/sign-in')
-
-  const isOwner = user.role === 'owner'
+  const user = await requireOwner()
+  const isOwner = true
 
   const storeResult = await getStoreSettings()
   const store = storeResult.success ? storeResult.data : null

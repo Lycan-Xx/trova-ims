@@ -49,11 +49,7 @@ interface AnalyticsPageProps {
 }
 
 export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps) {
-  try {
-    await requireOwner()
-  } catch {
-    redirect('/sign-in')
-  }
+  await requireOwner()
 
   const params = await searchParams
   const preset = params.preset ?? 'last30'

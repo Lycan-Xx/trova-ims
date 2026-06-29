@@ -55,6 +55,9 @@ export default function NewSalePage() {
   // Submit state
   const [submitting, setSubmitting] = React.useState(false)
 
+  // Mobile drawer state
+  const [mobileCheckoutOpen, setMobileCheckoutOpen] = React.useState(false)
+
   // Autofocus on mount
   React.useEffect(() => {
     inputRef.current?.focus()
@@ -175,14 +178,13 @@ export default function NewSalePage() {
 
   return (
     <div
-      className="flex h-[calc(100vh-48px)] overflow-hidden"
+      className="flex flex-col md:flex-row h-[calc(100vh-48px)] overflow-hidden relative"
       style={{ background: 'var(--bg-base)' }}
     >
       {/* ── LEFT COLUMN ────────────────────────────────────────────────────── */}
       <div
-        className="flex flex-col"
+        className="flex flex-col w-full md:w-[55%]"
         style={{
-          width: '55%',
           borderRight: '1px solid var(--border)',
           background: 'var(--bg-base)',
         }}
@@ -446,13 +448,39 @@ export default function NewSalePage() {
             </div>
           )}
         </div>
+
+        {/* Mobile Checkout Button */}
+        <div className="md:hidden mt-auto px-6 py-4 shrink-0" style={{ background: 'var(--bg-nav)', borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => setMobileCheckoutOpen(true)}
+            disabled={cart.length === 0}
+            className="w-full flex items-center justify-between px-4 rounded-xl font-semibold transition-colors"
+            style={{
+              height: 48,
+              fontSize: 16,
+              background: cart.length > 0 ? 'var(--accent-primary)' : 'var(--bg-input)',
+              color: cart.length > 0 ? '#ffffff' : 'var(--text-muted)',
+              cursor: cart.length > 0 ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <span>Checkout</span>
+            <span>{getCurrencySymbol(currency)}{fmt(cartTotal)}</span>
+          </button>
+        </div>
       </div>
 
       {/* ── RIGHT COLUMN ───────────────────────────────────────────────────── */}
       <div
-        className="flex flex-col"
-        style={{ width: '45%', background: 'var(--bg-nav)' }}
+        className={`fixed inset-0 z-50 flex flex-col md:static md:w-[45%] md:z-auto transition-transform duration-300 ${mobileCheckoutOpen ? 'translate-y-0' : 'translate-y-full md:translate-y-0'}`}
+        style={{ background: 'var(--bg-nav)' }}
       >
+        {/* Mobile Drawer Header */}
+        <div className="md:hidden flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+          <h2 className="font-semibold text-lg" style={{ color: 'var(--text-primary)' }}>Checkout</h2>
+          <button onClick={() => setMobileCheckoutOpen(false)} className="p-2 -mr-2" style={{ color: 'var(--text-muted)' }}>
+            <X size={20} />
+          </button>
+        </div>
         {/* Order summary */}
         <div
           className="flex-1 overflow-y-auto px-6 pt-6 pb-4"

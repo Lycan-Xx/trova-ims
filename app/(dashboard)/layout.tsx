@@ -33,7 +33,7 @@ export default async function DashboardLayout({
             overflow: 'hidden',
           }}
         >
-          <Sidebar />
+          <Sidebar userRole={user.role} />
           {/* Content area — sidebar is fixed-position so we pad-left to avoid overlap */}
           <div
             style={{
@@ -75,7 +75,7 @@ export default async function DashboardLayout({
           >
             {children}
           </main>
-          <MobileNav />
+          <MobileNav userRole={user.role} />
         </div>
       </>
     </CurrencyProvider>

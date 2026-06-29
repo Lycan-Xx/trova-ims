@@ -16,6 +16,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import type { UserRole } from '@/lib/db/schema'
+import { getAccessiblePages, PageFeature } from '@/lib/auth/role-access'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -98,10 +100,15 @@ function NavItem({ href, icon: Icon, label, isActive, expanded, joyrideId }: Nav
   )
 }
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole?: UserRole }) {
   const pathname = usePathname()
   const [expanded, setExpanded] = React.useState(true)
   const width = expanded ? EXPANDED_W : COLLAPSED_W
+
+  const accessiblePages = getAccessiblePages(userRole)
+  const filteredNavItems = NAV_ITEMS.filter((item) =>
+    accessiblePages.includes(item.href as PageFeature)
+  )
 
   // Propagate sidebar width to the layout via CSS custom property
   React.useEffect(() => {
@@ -171,7 +178,7 @@ export function Sidebar() {
         style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, width: '100%' }}
         aria-label="Main navigation"
       >
-        {NAV_ITEMS.map(({ href, icon, label, joyrideId }) => {
+        {filteredNavItems.map(({ href, icon, label, joyrideId }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/')
           return (
             <NavItem
@@ -189,14 +196,16 @@ export function Sidebar() {
 
       {/* Bottom: settings + collapse toggle */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <NavItem
-          href="/settings"
-          icon={Settings}
-          label="Settings"
-          isActive={pathname === '/settings'}
-          expanded={expanded}
-          joyrideId="nav-settings"
-        />
+        {accessiblePages.includes('/settings') && (
+          <NavItem
+            href="/settings"
+            icon={Settings}
+            label="Settings"
+            isActive={pathname === '/settings'}
+            expanded={expanded}
+            joyrideId="nav-settings"
+          />
+        )}
 
         {/* Collapse toggle — hidden on desktop, visible on mobile */}
         <button

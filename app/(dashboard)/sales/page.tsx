@@ -21,7 +21,11 @@ export default async function SalesPage({ searchParams }: PageProps) {
   const dateFrom = params.dateFrom ? String(params.dateFrom) : undefined
   const dateTo = params.dateTo ? String(params.dateTo) : undefined
   const paymentMethod = params.paymentMethod ? String(params.paymentMethod) : undefined
-  const cashierId = params.cashierId ? String(params.cashierId) : undefined
+  let cashierId = params.cashierId ? String(params.cashierId) : undefined
+  
+  if (user.role === 'cashier') {
+    cashierId = user.id
+  }
 
   const [salesResult, cashiersResult] = await Promise.all([
     getSales({ page, dateFrom, dateTo, paymentMethod, cashierId }),

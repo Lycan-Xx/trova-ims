@@ -10,7 +10,10 @@ export const metadata = {
   title: 'Vendors | Stock Remake',
 }
 
+import { requireStoreAccess } from '@/lib/auth'
+
 export default async function VendorsPage({ searchParams }: PageProps) {
+  await requireStoreAccess()
   const { type, search } = await searchParams
 
   const filters: GetVendorsFilters = {

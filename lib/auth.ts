@@ -111,7 +111,7 @@ export async function getCurrentUser(): Promise<User | null> {
 export async function requireRole(allowedRoles: UserRole[]): Promise<User> {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
-  if (!allowedRoles.includes(user.role)) throw new Response('Forbidden', { status: 403 })
+  if (!allowedRoles.includes(user.role)) redirect('/dashboard?error=unauthorized')
   return user
 }
 

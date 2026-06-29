@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import { Truck, ClipboardList, BarChart2, Settings } from 'lucide-react'
+import type { UserRole } from '@/lib/db/schema'
+import { getAccessiblePages, PageFeature } from '@/lib/auth/role-access'
 
 const PRIMARY_NAV = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Home'    },
@@ -26,11 +28,15 @@ const MORE_NAV = [
   { href: '/settings',  icon: Settings,     label: 'Settings'  },
 ]
 
-export function MobileNav() {
+export function MobileNav({ userRole }: { userRole?: UserRole }) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = React.useState(false)
 
-  const isMoreActive = MORE_NAV.some(
+  const accessiblePages = getAccessiblePages(userRole)
+  const filteredPrimary = PRIMARY_NAV.filter((n) => accessiblePages.includes(n.href as PageFeature))
+  const filteredMore = MORE_NAV.filter((n) => accessiblePages.includes(n.href as PageFeature))
+
+  const isMoreActive = filteredMore.some(
     (n) => pathname === n.href || pathname.startsWith(n.href + '/'),
   )
 
@@ -57,7 +63,7 @@ export function MobileNav() {
             }}
           >
             <div className="grid grid-cols-4 gap-3">
-              {MORE_NAV.map(({ href, icon: Icon, label }) => {
+              {filteredMore.map(({ href, icon: Icon, label }) => {
                 const active = pathname === href || pathname.startsWith(href + '/')
                 return (
                   <Link
@@ -86,7 +92,6 @@ export function MobileNav() {
         </>
       )}
 
-      {/* Bottom tab bar */}
       <nav
         aria-label="Main navigation"
         className="fixed bottom-0 left-0 right-0 z-50"
@@ -99,7 +104,7 @@ export function MobileNav() {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {[...PRIMARY_NAV].map(({ href, icon: Icon, label }) => {
+        {filteredPrimary.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link
@@ -124,26 +129,28 @@ export function MobileNav() {
         })}
 
         {/* More button */}
-        <button
-          type="button"
-          onClick={() => setMoreOpen((v) => !v)}
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 3,
-            height: '100%',
-            border: 'none',
-            background: 'transparent',
-            color: isMoreActive || moreOpen ? 'var(--accent-primary)' : 'var(--text-muted)',
-            cursor: 'pointer',
-          }}
-        >
-          <MoreHorizontal size={20} strokeWidth={isMoreActive || moreOpen ? 2 : 1.75} />
-          <span style={{ fontSize: 10, fontWeight: isMoreActive || moreOpen ? 600 : 400 }}>More</span>
-        </button>
+        {filteredMore.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMoreOpen((v) => !v)}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 3,
+              height: '100%',
+              border: 'none',
+              background: 'transparent',
+              color: isMoreActive || moreOpen ? 'var(--accent-primary)' : 'var(--text-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            <MoreHorizontal size={20} strokeWidth={isMoreActive || moreOpen ? 2 : 1.75} />
+            <span style={{ fontSize: 10, fontWeight: isMoreActive || moreOpen ? 600 : 400 }}>More</span>
+          </button>
+        )}
       </nav>
     </>
   )

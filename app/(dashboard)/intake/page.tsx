@@ -16,7 +16,10 @@ interface IntakePageProps {
   }>
 }
 
+import { requireStoreAccess } from '@/lib/auth'
+
 export default async function IntakePage({ searchParams }: IntakePageProps) {
+  await requireStoreAccess()
   const params = await searchParams
 
   const filters: GetBatchesFilters = {
