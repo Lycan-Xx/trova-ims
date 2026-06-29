@@ -13,10 +13,7 @@ export default async function SignUpPage() {
   if (session?.user) redirect("/dashboard");
 
   return (
-    <AuthLayout
-      title="Create Your Workspace"
-      description="Start managing inventory with a secure platform built for modern businesses and growing teams."
-    >
+    <AuthLayout>
       <AuthForm mode="sign-up" />
     </AuthLayout>
   );

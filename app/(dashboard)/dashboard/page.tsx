@@ -8,7 +8,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getOnboardingState } from '@/lib/actions/onboarding'
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
 import { getStoreSettings } from '@/app/actions/settings'
-import { getCurrencySymbol } from '@/lib/currency'
+import { getCurrencySymbol, formatCurrency } from '@/lib/currency'
 
 function fmtCurrency(n: number, symbol: string): string {
   return symbol + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

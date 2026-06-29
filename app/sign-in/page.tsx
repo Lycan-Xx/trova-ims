@@ -13,10 +13,7 @@ export default async function SignInPage() {
   if (session?.user) redirect("/dashboard");
 
   return (
-    <AuthLayout
-      title="Welcome Back"
-      description="Securely manage inventory, monitor stock levels, and collaborate with your team from anywhere."
-    >
+    <AuthLayout>
       <AuthForm mode="sign-in" />
     </AuthLayout>
   );

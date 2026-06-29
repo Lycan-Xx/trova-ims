@@ -9,6 +9,7 @@ const PUBLIC_PREFIXES = [
   '/api/purge',
   '/api/test-suite',
   '/api/webhooks',
+  '/privacy',
 ]
 
 export function middleware(request: NextRequest) {
