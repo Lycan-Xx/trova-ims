@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Font,
 } from '@react-pdf/renderer'
+import { getCurrencySymbol } from '@/lib/currency'
 import type { SaleDetail } from '@/app/actions/sales'
 
 // Register Helvetica as the base font (built into PDF spec, no download needed)
@@ -150,8 +151,12 @@ const styles = StyleSheet.create({
   },
 })
 
-const fmt = (v: string | number) =>
-  `₦${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+// Create dynamic fmt function that uses currency symbol
+function createFmtFunction(currencyCode: string) {
+  const symbol = getCurrencySymbol(currencyCode)
+  return (v: string | number) =>
+    `${symbol}${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+}
 
 const fmtDate = (iso: string) => {
   const d = new Date(iso)
@@ -169,6 +174,7 @@ interface ReceiptPDFProps {
   storeName?: string
   storeAddress?: string
   storePhone?: string
+  currency?: string
 }
 
 export function ReceiptPDF({
@@ -176,7 +182,9 @@ export function ReceiptPDF({
   storeName = 'My Store',
   storeAddress = '',
   storePhone = '',
+  currency = 'NGN',
 }: ReceiptPDFProps) {
+  const fmt = createFmtFunction(currency)
   const subtotal = sale.items.reduce((s, i) => s + parseFloat(i.lineTotal), 0)
 
   return (

@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useCurrency } from '@/lib/currency-context'
+import { formatCurrency } from '@/lib/currency'
 import type { SaleRow } from '@/app/actions/sales'
 
 interface SalesListProps {
@@ -28,11 +30,6 @@ interface SalesListProps {
     transactionCount: number
     avgTransactionValue: number
   }
-}
-
-function formatNaira(value: string | number): string {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return '₦' + num.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatDateTime(value: string): string {
@@ -70,6 +67,7 @@ export function SalesList({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { currency } = useCurrency()
 
   function updateParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString())
@@ -112,7 +110,7 @@ export function SalesList({
               Total Revenue
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--positive)' }}>
-              {formatNaira(summary.totalRevenue)}
+              {formatCurrency(summary.totalRevenue, currency)}
             </span>
           </div>
           <div className="flex flex-col gap-1">
@@ -128,7 +126,7 @@ export function SalesList({
               Avg. Transaction
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--accent-teal)' }}>
-              {formatNaira(summary.avgTransactionValue)}
+              {formatCurrency(summary.avgTransactionValue, currency)}
             </span>
           </div>
         </div>
@@ -294,7 +292,7 @@ export function SalesList({
                   {/* Total Amount */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      {formatNaira(sale.total_amount)}
+                      {formatCurrency(sale.total_amount, currency)}
                     </span>
                   </td>
 

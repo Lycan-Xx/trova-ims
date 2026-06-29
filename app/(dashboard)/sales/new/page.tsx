@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { X, Search, ShoppingCart, Loader2, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { useCurrency } from '@/lib/currency-context'
+import { getCurrencySymbol } from '@/lib/currency'
 import { getProducts } from '@/app/actions/products'
 import { createSale } from '@/app/actions/sales'
 import type { ProductWithStock } from '@/app/actions/products'
@@ -32,6 +34,7 @@ function fmt(n: number) {
 
 export default function NewSalePage() {
   const router = useRouter()
+  const { currency } = useCurrency()
 
   // Search state
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -301,7 +304,7 @@ export default function NewSalePage() {
                       </div>
                       <div className="flex flex-col items-end gap-0.5 ml-4 shrink-0">
                         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                          ₦{fmt(parseFloat(product.selling_price as string))}
+                          {getCurrencySymbol(currency)}{fmt(parseFloat(product.selling_price as string))}
                         </span>
                         {outOfStock ? (
                           <span className="text-xs" style={{ color: 'var(--danger)' }}>Out of stock</span>
@@ -404,12 +407,12 @@ export default function NewSalePage() {
 
                       {/* Unit price */}
                       <p className="text-sm text-right" style={{ color: 'var(--text-secondary)' }}>
-                        ₦{fmt(parseFloat(entry.product.selling_price as string))}
+                        {getCurrencySymbol(currency)}{fmt(parseFloat(entry.product.selling_price as string))}
                       </p>
 
                       {/* Line total */}
                       <p className="text-sm font-semibold text-right" style={{ color: 'var(--text-primary)' }}>
-                        ₦{fmt(lineTotal)}
+                        {getCurrencySymbol(currency)}{fmt(lineTotal)}
                       </p>
 
                       {/* Remove */}
@@ -473,10 +476,10 @@ export default function NewSalePage() {
                       {entry.product.name}
                     </span>
                     <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {entry.qty} × ₦{fmt(parseFloat(entry.product.selling_price as string))}
+                      {entry.qty} × {getCurrencySymbol(currency)}{fmt(parseFloat(entry.product.selling_price as string))}
                     </span>
                     <span className="text-xs font-medium whitespace-nowrap shrink-0" style={{ color: 'var(--text-primary)' }}>
-                      ₦{fmt(lineTotal)}
+                      {getCurrencySymbol(currency)}{fmt(lineTotal)}
                     </span>
                   </div>
                 )
@@ -494,7 +497,7 @@ export default function NewSalePage() {
                 className="font-bold"
                 style={{ fontSize: 24, color: 'var(--text-primary)', lineHeight: 1 }}
               >
-                ₦{fmt(cartTotal)}
+                {getCurrencySymbol(currency)}{fmt(cartTotal)}
               </span>
             </div>
           </div>
@@ -540,7 +543,7 @@ export default function NewSalePage() {
                 className="block text-xs font-medium mb-1.5"
                 style={{ color: 'var(--text-secondary)' }}
               >
-                Amount Received (₦)
+                Amount Received ({getCurrencySymbol(currency)})
               </label>
               <input
                 type="number"
@@ -576,7 +579,7 @@ export default function NewSalePage() {
                       lineHeight: 1,
                     }}
                   >
-                    ₦{fmt(Math.abs(change))}
+                    {getCurrencySymbol(currency)}{fmt(Math.abs(change))}
                   </span>
                 </div>
               )}

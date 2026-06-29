@@ -14,6 +14,8 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command'
+import { useCurrency } from '@/lib/currency-context'
+import { getCurrencySymbol } from '@/lib/currency'
 import { createBatch } from '@/app/actions/batches'
 import type { VendorWithStats } from '@/app/actions/vendors'
 import type { ProductWithStock } from '@/app/actions/products'
@@ -265,6 +267,7 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
 
 export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormProps) {
   const router = useRouter()
+  const { currency } = useCurrency()
 
   // Section 1
   const [productId, setProductId] = React.useState(defaultProductId ?? '')
@@ -567,13 +570,13 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         )}
 
         {/* Total cost */}
-        <Field label="Total Purchase Cost (₦)" required error={errors.totalCost}>
+        <Field label={`Total Purchase Cost (${getCurrencySymbol(currency)})`} required error={errors.totalCost}>
           <div data-error={!!errors.totalCost} className="relative">
             <span
               className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
               style={{ color: 'var(--text-muted)' }}
             >
-              ₦
+              {getCurrencySymbol(currency)}
             </span>
             <Input
               type="number"
@@ -614,13 +617,13 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
 
         {overrideSelling && (
           <>
-            <Field label="Selling Price per Unit (₦)" required error={errors.sellingPrice}>
+            <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
               <div data-error={!!errors.sellingPrice} className="relative">
                 <span
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  ₦
+                  {getCurrencySymbol(currency)}
                 </span>
                 <Input
                   type="number"
