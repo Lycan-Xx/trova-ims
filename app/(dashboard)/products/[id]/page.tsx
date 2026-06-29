@@ -2,19 +2,20 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, Package } from 'lucide-react'
 import { getProductById } from '@/app/actions/products'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 import { Badge } from '@/components/ui/badge'
 import type { Batch } from '@/lib/db/schema'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatNaira(value: string | number | null): string {
-  if (value === null || value === undefined) return '—'
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 2,
-  }).format(num)
+function makeFormatCurrency(symbol: string) {
+  return function formatCurrency(value: string | number | null): string {
+    if (value === null || value === undefined) return '—'
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    if (isNaN(num)) return '—'
+    return `${symbol}${num.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 }
 
 function formatDate(value: string | Date | null): string {
@@ -37,7 +38,7 @@ function getExpiryStyle(expiryDate: string | Date | null): React.CSSProperties {
 
 // ─── Batch Row ────────────────────────────────────────────────────────────────
 
-function BatchRow({ batch, index }: { batch: Batch; index: number }) {
+function BatchRow({ batch, index, formatCurrency }: { batch: Batch; index: number; formatCurrency: (v: string | number | null) => string }) {
   return (
     <tr
       style={{
@@ -71,10 +72,10 @@ function BatchRow({ batch, index }: { batch: Batch; index: number }) {
         </span>
       </td>
       <td className="px-4 py-3 text-sm tabular-nums text-right" style={{ color: 'var(--text-secondary)' }}>
-        {formatNaira(batch.cost_per_unit)}
+        {formatCurrency(batch.cost_per_unit)}
       </td>
       <td className="px-4 py-3 text-sm tabular-nums text-right" style={{ color: 'var(--text-secondary)' }}>
-        {batch.selling_price_override ? formatNaira(batch.selling_price_override) : (
+        {batch.selling_price_override ? formatCurrency(batch.selling_price_override) : (
           <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11 }}>default</span>
         )}
       </td>
@@ -100,11 +101,14 @@ export default async function ProductDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const result = await getProductById(id)
+  const [result, storeResult] = await Promise.all([getProductById(id), getStoreSettings()])
 
   if (!result.success || !result.data) {
     redirect('/products')
   }
+
+  const currencySymbol = getCurrencySymbol(storeResult?.success ? storeResult.data.currency : 'NGN')
+  const formatCurrency = makeFormatCurrency(currencySymbol)
 
   const product = result.data
   const currentStock = product.current_stock ?? 0
@@ -197,7 +201,7 @@ export default async function ProductDetailPage({
 
           <InfoCell label="Default Selling Price">
             <span className="text-sm tabular-nums font-medium" style={{ color: 'var(--text-primary)' }}>
-              {formatNaira(product.selling_price)}
+              {formatCurrency(product.selling_price)}
             </span>
           </InfoCell>
 
@@ -295,8 +299,8 @@ export default async function ProductDetailPage({
                     'Batch Ref',
                     'Qty Received',
                     'Qty Remaining',
-                    'Cost / Unit (₦)',
-                    'Selling Price (₦)',
+                    `Cost / Unit (${currencySymbol})`,
+                    `Selling Price (${currencySymbol})`,
                     'Expiry Date',
                     'Type',
                   ].map((col, i) => (
@@ -312,7 +316,7 @@ export default async function ProductDetailPage({
               </thead>
               <tbody>
                 {product.batches.map((batch, i) => (
-                  <BatchRow key={batch.id} batch={batch} index={i} />
+                  <BatchRow key={batch.id} batch={batch} index={i} formatCurrency={formatCurrency} />
                 ))}
               </tbody>
             </table>

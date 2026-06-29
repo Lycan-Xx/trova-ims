@@ -7,9 +7,11 @@ import { getLowStockAlerts, getExpiryAlerts } from '@/app/actions/alerts'
 import { getCurrentUser } from '@/lib/auth'
 import { getOnboardingState } from '@/lib/actions/onboarding'
 import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 
-function fmtCurrency(n: number): string {
-  return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function fmtCurrency(n: number, symbol: string): string {
+  return symbol + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtTrend(current: number, previous: number): number | undefined {
@@ -36,7 +38,7 @@ export default async function DashboardPage() {
   const sevenDaysAgo = toDateStr(new Date(now.getTime() - 6 * 86_400_000))
 
   // Fetch all data in parallel — analytics only available to owners
-  const [todayResult, yesterdayResult, monthResult, weekResult, lowStockResult, expiryResult, onboardingResult] =
+  const [todayResult, yesterdayResult, monthResult, weekResult, lowStockResult, expiryResult, onboardingResult, storeResult] =
     await Promise.all([
       isOwner ? getSalesAnalytics(today, today) : Promise.resolve(null),
       isOwner ? getSalesAnalytics(yesterday, yesterday) : Promise.resolve(null),
@@ -45,6 +47,7 @@ export default async function DashboardPage() {
       getLowStockAlerts(),
       getExpiryAlerts(7),
       isOwner ? getOnboardingState() : Promise.resolve(null),
+      getStoreSettings(),
     ])
 
   const todayData = todayResult?.success ? todayResult.data : null
@@ -53,6 +56,8 @@ export default async function DashboardPage() {
   const weekData = weekResult?.success ? weekResult.data : null
 
   const onboardingState = onboardingResult?.success ? onboardingResult.data : null
+  const currency = storeResult?.success ? storeResult.data.currency : 'NGN'
+  const currencySymbol = getCurrencySymbol(currency)
 
   const lowStockCount = lowStockResult.success ? lowStockResult.data.length : 0
   const expiryCount = expiryResult.success ? expiryResult.data.length : 0
@@ -139,7 +144,7 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             title="Today's Revenue"
-            value={todayData ? fmtCurrency(todayData.totalRevenue) : '—'}
+            value={todayData ? fmtCurrency(todayData.totalRevenue, currencySymbol) : '—'}
             trend={revenueTrend}
             trendLabel="vs yesterday"
           />
@@ -151,7 +156,7 @@ export default async function DashboardPage() {
           />
           <StatCard
             title="This Month's Revenue"
-            value={monthData ? fmtCurrency(monthData.totalRevenue) : '—'}
+            value={monthData ? fmtCurrency(monthData.totalRevenue, currencySymbol) : '—'}
           />
           <div
             className="rounded-[12px] border p-4"
@@ -304,7 +309,7 @@ export default async function DashboardPage() {
                           {p.unitsSold.toLocaleString()}
                         </td>
                         <td className="py-2.5 text-right text-sm tabular-nums font-medium" style={{ color: 'var(--positive)' }}>
-                          {fmtCurrency(p.revenue)}
+                          {fmtCurrency(p.revenue, currencySymbol)}
                         </td>
                       </tr>
                     ))}

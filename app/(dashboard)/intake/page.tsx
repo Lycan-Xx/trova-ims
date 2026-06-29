@@ -36,7 +36,7 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
   const vendors = vendorsResult.success ? vendorsResult.data : []
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-[1200px]">
       <div>
         <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
           Stock Intake

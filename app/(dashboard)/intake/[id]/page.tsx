@@ -10,10 +10,14 @@ import {
 } from 'lucide-react'
 import { getBatchById } from '@/app/actions/batches'
 import { Badge } from '@/components/ui/badge'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 
-function fmt(v: string | number | null) {
-  if (v === null || v === undefined) return '—'
-  return `₦${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function makeFmt(symbol: string) {
+  return function fmt(v: string | number | null) {
+    if (v === null || v === undefined) return '—'
+    return `${symbol}${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
 }
 
 function fmtDate(v: string | null) {
@@ -36,9 +40,11 @@ export default async function IntakeDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const result = await getBatchById(id)
+  const [result, storeResult] = await Promise.all([getBatchById(id), getStoreSettings()])
 
   if (!result.success) notFound()
+
+  const fmt = makeFmt(getCurrencySymbol(storeResult?.success ? storeResult.data.currency : 'NGN'))
 
   const batch = result.data
   const product = batch.product ?? {

@@ -13,6 +13,8 @@ import {
 import Papa from 'papaparse'
 import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
+import { useCurrency } from '@/lib/currency-context'
+import { getCurrencySymbol } from '@/lib/currency'
 import type {
   SalesAnalytics,
   VendorAnalytics,
@@ -21,8 +23,8 @@ import type {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtCurrency(n: number): string {
-  return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function makeFmtCurrency(symbol: string) {
+  return (n: number) => symbol + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtNum(n: number): string {
@@ -54,12 +56,14 @@ function triggerCsvDownload(data: object[], filename: string) {
 
 // ── Custom tooltip for bar chart ──────────────────────────────────────────────
 
-function RevenueTooltip({ active, payload, label }: {
+function RevenueTooltip({ active, payload, label, fmtCurrency }: {
   active?: boolean
   payload?: { value: number }[]
   label?: string
+  fmtCurrency?: (n: number) => string
 }) {
   if (!active || !payload?.length) return null
+  const fmt = fmtCurrency ?? ((n: number) => String(n))
   return (
     <div
       className="px-3 py-2 rounded-lg text-xs shadow-lg"
@@ -70,7 +74,7 @@ function RevenueTooltip({ active, payload, label }: {
       }}
     >
       <p style={{ color: 'var(--text-muted)' }}>{label}</p>
-      <p className="font-semibold mt-0.5">{fmtCurrency(payload[0].value)}</p>
+      <p className="font-semibold mt-0.5">{fmt(payload[0].value)}</p>
     </div>
   )
 }
@@ -195,6 +199,9 @@ export function AnalyticsPanels({
   dateTo,
   isLoading,
 }: AnalyticsPanelsProps) {
+  const { currency } = useCurrency()
+  const currencySymbol = getCurrencySymbol(currency)
+  const fmtCurrency = makeFmtCurrency(currencySymbol)
   const rangeLabel = `${dateFrom}_${dateTo}`
 
   function exportProducts() {
@@ -205,7 +212,7 @@ export function AnalyticsPanels({
         Product: p.name,
         SKU: p.sku,
         'Units Sold': p.unitsSold,
-        'Revenue (NGN)': p.revenue.toFixed(2),
+        [`Revenue (${currency})`]: p.revenue.toFixed(2),
         'Avg Margin (%)': p.avgMargin.toFixed(2),
       })),
       `product-report_${rangeLabel}.csv`,
@@ -219,7 +226,7 @@ export function AnalyticsPanels({
         Type: v.vendorType,
         Batches: v.batchCount,
         'Units Received': v.totalUnitsReceived,
-        'Total Cost (NGN)': v.totalPurchaseCost.toFixed(2),
+        [`Total Cost (${currency})`]: v.totalPurchaseCost.toFixed(2),
         'Outstanding Units': v.outstandingQty,
       })),
       `vendor-report_${rangeLabel}.csv`,
@@ -234,7 +241,7 @@ export function AnalyticsPanels({
         Vendor: e.vendorName ?? '',
         'Qty Remaining': e.qtyRemaining,
         'Expiry Date': e.expiryDate,
-        'Est. Value at Risk (NGN)': e.estValueAtRisk.toFixed(2),
+        [`Est. Value at Risk (${currency})`]: e.estValueAtRisk.toFixed(2),
       })),
       `expiry-risk-report_${rangeLabel}.csv`,
     )
@@ -265,7 +272,7 @@ export function AnalyticsPanels({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Revenue"
-          value={sales ? fmtCurrency(sales.totalRevenue) : '₦0'}
+          value={sales ? fmtCurrency(sales.totalRevenue) : `${currencySymbol}0`}
         />
         <StatCard
           title="Transactions"
@@ -273,7 +280,7 @@ export function AnalyticsPanels({
         />
         <StatCard
           title="Avg Transaction"
-          value={sales ? fmtCurrency(sales.avgTransactionValue) : '₦0'}
+          value={sales ? fmtCurrency(sales.avgTransactionValue) : `${currencySymbol}0`}
         />
         <StatCard
           title="Units Sold"
@@ -310,13 +317,13 @@ export function AnalyticsPanels({
                     interval="preserveStartEnd"
                   />
                   <YAxis
-                    tickFormatter={(v) => '₦' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v)}
+                    tickFormatter={(v) => currencySymbol + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v)}
                     tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                     width={52}
                   />
-                  <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'var(--bg-card-hover)' }} />
+                  <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: 'var(--bg-card-hover)' }} />
                   <Bar
                     dataKey="revenue"
                     fill="var(--accent-primary)"

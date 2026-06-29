@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { CheckCircle2, ArrowLeft } from 'lucide-react'
 import { getSaleById } from '@/app/actions/sales'
 import { ReceiptDownloadButton } from '@/components/sales/receipt-download-button'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 
 export default async function SaleConfirmationPage({
   params,
@@ -10,14 +12,15 @@ export default async function SaleConfirmationPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const result = await getSaleById(id)
+  const [result, storeResult] = await Promise.all([getSaleById(id), getStoreSettings()])
 
   if (!result.success) redirect('/sales')
 
   const sale = result.data
+  const currencySymbol = getCurrencySymbol(storeResult?.success ? storeResult.data.currency : 'NGN')
 
   const fmt = (v: string | number) =>
-    `₦${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    `${currencySymbol}${parseFloat(String(v)).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleString('en-NG', {
