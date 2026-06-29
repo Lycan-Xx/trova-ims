@@ -1,3 +1,5 @@
+'use client'
+
 const RECEIPT_ITEMS = [
   { name: 'Indomie 70g', qty: 6, total: '₦1,800' },
   { name: 'Milo 400g', qty: 2, total: '₦5,000' },
