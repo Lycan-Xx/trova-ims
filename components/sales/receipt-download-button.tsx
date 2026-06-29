@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { FileDown, Loader2 } from 'lucide-react'
+import { useCurrency } from '@/lib/currency-context'
 import type { SaleDetail } from '@/app/actions/sales'
 import type { JSXElementConstructor, ReactElement } from 'react'
 import type { DocumentProps } from '@react-pdf/renderer'
@@ -19,6 +20,7 @@ export function ReceiptDownloadButton({
   storeAddress,
   storePhone,
 }: ReceiptDownloadButtonProps) {
+  const { currency } = useCurrency()
   const [loading, setLoading] = React.useState(false)
 
   async function handleDownload() {
@@ -36,6 +38,7 @@ export function ReceiptDownloadButton({
         storeName,
         storeAddress,
         storePhone,
+        currency,
       })
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

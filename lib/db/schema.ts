@@ -11,6 +11,7 @@ export interface Store {
   name: string
   address: string | null
   phone: string | null
+  currency: string
   created_at: string
 }
 
