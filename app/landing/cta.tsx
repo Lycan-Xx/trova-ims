@@ -36,7 +36,7 @@ export default function Cta() {
             (e.currentTarget.style.backgroundColor = 'var(--accent-primary)')
           }
         >
-          Create your store — it&apos;s free
+          Create your store, it&apos;s free
           <svg
             width="14"
             height="14"

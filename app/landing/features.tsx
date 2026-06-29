@@ -15,25 +15,25 @@ const FEATURES = [
     Icon: Package,
     name: 'Inventory Control',
     headline: 'Always know what is in stock.',
-    body: 'Stock levels are computed live from batch data — never from a manually updated number. When something sells, the shelf count drops. When a batch arrives, it rises. The number you see is always real.',
+    body: 'Stock levels are computed live from batch data never from a manually updated number. When something sells, the shelf count drops. When a batch arrives, it rises. The number you see is always real.',
   },
   {
     Icon: ClipboardList,
     name: 'Batch Tracking',
     headline: 'Every delivery has a full record.',
-    body: 'Each intake is logged as a batch — which vendor, what it cost per unit, how many arrived, and when it expires. When you sell, Trova pulls from the oldest batch first so nothing sits too long and spoils.',
+    body: 'Each intake is logged as a batch which vendor, what it cost per unit, how many arrived, and when it expires. When you sell, Trova pulls from the oldest batch first so nothing sits too long and spoils.',
   },
   {
     Icon: ShoppingCart,
     name: 'Point of Sale',
     headline: 'Checkout in seconds, receipt in one click.',
-    body: 'Search for a product, set the quantity, confirm the payment. Trova calculates the change, decrements the stock, and generates a professional PDF receipt — all before the customer reaches for their bag.',
+    body: 'Search for a product, set the quantity, confirm the payment. Trova calculates the change, decrements the stock, and generates a professional PDF receipt all before the customer reaches for their bag.',
   },
   {
     Icon: Truck,
     name: 'Vendor Management',
     headline: 'Know exactly what you owe every supplier.',
-    body: 'Track direct purchases and consignment vendors separately. For consignment, Trova shows exactly how many units from each vendor are still unsold on your shelf — so payment conversations have receipts.',
+    body: 'Track direct purchases and consignment vendors separately. For consignment, Trova shows exactly how many units from each vendor are still unsold on your shelf so payment conversations have receipts.',
   },
   {
     Icon: Bell,
@@ -45,7 +45,7 @@ const FEATURES = [
     Icon: BarChart2,
     name: 'Analytics',
     headline: 'Understand what is making you money.',
-    body: 'Top products by units and revenue, daily sales charts, profit margins per product, vendor spend summaries — all filterable by any date range and exportable to CSV with one click.',
+    body: 'Top products by units and revenue, daily sales charts, profit margins per product, vendor spend summaries all filterable by any date range and exportable to CSV with one click.',
   },
 ]
 

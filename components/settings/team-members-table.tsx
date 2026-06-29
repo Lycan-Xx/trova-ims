@@ -300,7 +300,7 @@ function UserRow({
         {isSelf ? (
           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>You</span>
         ) : user.role === 'owner' ? (
-          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}> </span>
         ) : (
           <div className="flex items-center justify-end gap-2">
             {/* Change role */}

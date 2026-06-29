@@ -75,7 +75,7 @@ export default function Hero() {
             >
               {currentCurrency.symbol}
             </span>
-            {' '}— from the moment goods arrive to the moment a receipt is printed.
+            {' '} from the moment goods arrive to the moment a receipt is printed.
           </p>
 
           <Link

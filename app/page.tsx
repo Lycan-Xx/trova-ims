@@ -12,7 +12,7 @@ import { Console } from 'console'
 export const metadata = {
   title: 'Trova — Know your store, always.',
   description:
-    'Trova tracks every item, every batch, every naira — from supplier intake to customer receipt. Inventory management built for retail stores.',
+    'Trova tracks every item, every batch, every naira from supplier intake to customer receipt. Inventory management built for retail stores.',
 }
 
 export default function LandingPage() {

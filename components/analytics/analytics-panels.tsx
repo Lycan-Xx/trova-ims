@@ -469,10 +469,10 @@ export function AnalyticsPanels({
                         {e.productName}
                       </td>
                       <td className="px-5 py-3.5 mono text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {e.batchRef ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                        {e.batchRef ?? <span style={{ color: 'var(--text-muted)' }}> </span>}
                       </td>
                       <td className="px-5 py-3.5" style={{ color: 'var(--text-secondary)' }}>
-                        {e.vendorName ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                        {e.vendorName ?? <span style={{ color: 'var(--text-muted)' }}> </span>}
                       </td>
                       <td className="px-5 py-3.5 tabular-nums font-medium" style={{ color: 'var(--text-primary)' }}>
                         {fmtNum(e.qtyRemaining)}

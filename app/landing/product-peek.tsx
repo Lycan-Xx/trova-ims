@@ -32,7 +32,7 @@ export default function ProductPeek() {
             />
           </div>
 
-          {/* Shadow card behind — rotated opposite */}
+          {/* Shadow card behind rotated opposite */}
           <div
             className="absolute w-[252px] h-[340px] rounded-2xl border"
             style={{
@@ -143,7 +143,7 @@ export default function ProductPeek() {
             className="text-[16px] leading-relaxed mb-8"
             style={{ color: 'var(--text-secondary)' }}
           >
-            Complete a sale and a professional receipt is ready to download —
+            Complete a sale and a professional receipt is ready to download
             your store name, itemised list, totals, payment method, and change.
             No manual work. No templates to fill in.
           </p>

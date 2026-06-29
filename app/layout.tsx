@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Trova — Inventory Management',
+  title: 'Trova - Inventory Management',
   description: 'Smart inventory and stock management for modern retail stores.',
   generator: 'v0.app',
   icons: {
