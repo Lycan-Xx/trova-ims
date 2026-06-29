@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { revalidateTag } from 'next/cache'
 import { query } from '@/lib/db'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
 import type { User, UserRole } from '@/lib/db/schema'
@@ -27,6 +28,10 @@ export async function updateStoreSettings(formData: {
        WHERE id = $5`,
       [name.trim(), address?.trim() || null, phone?.trim() || null, currency || null, user.store_id],
     )
+    
+    // Revalidate store cache so CurrencyProvider gets fresh data
+    revalidateTag(`store-${user.store_id}`, 'max')
+    
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update store settings.'
