@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ProductSlideOver } from '@/components/products/product-slide-over'
+import { useCurrency } from '@/lib/currency-context'
+import { formatCurrency } from '@/lib/currency'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category } from '@/lib/db/schema'
 
@@ -28,11 +30,6 @@ interface ProductListProps {
   totalPages: number
   currentPage: number
   totalCount: number
-}
-
-function formatNaira(value: string | number): string {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return '₦' + num.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function getStockBadge(stock: number, reorderLevel: number) {
@@ -51,6 +48,7 @@ export function ProductList({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { currency } = useCurrency()
 
   // Slide-over state
   const [slideOverOpen, setSlideOverOpen] = React.useState(false)
@@ -227,7 +225,7 @@ export function ProductList({
                   {/* Price */}
                   <td className="px-4 py-3">
                     <span className="text-sm text-text-primary font-medium">
-                      {formatNaira(product.selling_price)}
+                      {formatCurrency(product.selling_price, currency)}
                     </span>
                   </td>
 

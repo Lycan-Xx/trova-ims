@@ -11,6 +11,8 @@ export interface Store {
   name: string
   address: string | null
   phone: string | null
+  currency: string
+  onboarding_dismissed: boolean
   created_at: string
 }
 

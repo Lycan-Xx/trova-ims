@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/select'
 // Select still used for the Unit field above
 import { CategorySelect } from '@/components/products/category-select'
+import { useCurrency } from '@/lib/currency-context'
+import { getCurrencySymbol } from '@/lib/currency'
 import { createProduct, updateProduct } from '@/app/actions/products'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category, UnitType } from '@/lib/db/schema'
@@ -87,6 +89,7 @@ export function ProductSlideOver({
   product,
 }: ProductSlideOverProps) {
   const router = useRouter()
+  const { currency } = useCurrency()
   const isEditing = !!product
 
   // Category list (may grow via inline creation)
@@ -267,7 +270,7 @@ export function ProductSlideOver({
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium pointer-events-none"
                     style={{ color: 'var(--text-secondary)' }}
                   >
-                    ₦
+                    {getCurrencySymbol(currency)}
                   </span>
                   <input
                     type="number"

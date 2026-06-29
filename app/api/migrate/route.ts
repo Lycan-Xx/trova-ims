@@ -11,11 +11,13 @@ const STATEMENTS = [
 
   // App tables
   `CREATE TABLE IF NOT EXISTS stores (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name       TEXT NOT NULL,
-    address    TEXT,
-    phone      TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                 TEXT NOT NULL,
+    address              TEXT,
+    phone                TEXT,
+    currency             TEXT NOT NULL DEFAULT 'NGN',
+    onboarding_dismissed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE TABLE IF NOT EXISTS users (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,6 +34,9 @@ const STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_id TEXT`,
   `ALTER TABLE users ALTER COLUMN clerk_id DROP NOT NULL`,
   `UPDATE users SET auth_id = clerk_id WHERE auth_id IS NULL AND clerk_id IS NOT NULL`,
+  
+  `ALTER TABLE stores ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'NGN'`,
+  `ALTER TABLE stores ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT FALSE`,
   `CREATE INDEX IF NOT EXISTS idx_users_store_id ON users(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_auth_id  ON users(auth_id)`,
   `CREATE INDEX IF NOT EXISTS idx_users_email    ON users(email)`,
@@ -125,6 +130,23 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id    ON sale_items(sale_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_items_batch_id   ON sale_items(batch_id)`,
+
+  // Invitations table for team member management
+  `CREATE TABLE IF NOT EXISTS invitations (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    store_id   UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    email      TEXT NOT NULL,
+    role       user_role NOT NULL DEFAULT 'cashier',
+    invited_by UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    token      TEXT NOT NULL UNIQUE,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_invitations_store_id ON invitations(store_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email)`,
+  `CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token)`,
+  `CREATE INDEX IF NOT EXISTS idx_invitations_status ON invitations(status)`,
 
   // Better Auth tables (camelCase column names required by the library)
   `CREATE TABLE IF NOT EXISTS "user" (
