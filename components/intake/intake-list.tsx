@@ -207,7 +207,7 @@ export function IntakeList({
         </label>
 
         {/* Record intake CTA */}
-        <Link href="/intake/new" className="ml-auto">
+        <Link href="/intake/new" className="ml-auto" data-joyride="intake">
           <Button
             className="h-9 rounded-lg px-4 text-sm font-medium text-white"
             style={{ background: 'var(--accent-primary)' }}

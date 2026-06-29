@@ -108,6 +108,7 @@ export function VendorList({ vendors, activeType, activeSearch }: VendorListProp
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-primary-hover)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent-primary)')}
           onClick={openAdd}
+          data-joyride="vendor"
         >
           + Add Vendor
         </Button>

@@ -6,7 +6,7 @@ import { getSalesAnalytics } from '@/app/actions/analytics'
 import { getLowStockAlerts, getExpiryAlerts } from '@/app/actions/alerts'
 import { getCurrentUser } from '@/lib/auth'
 import { getOnboardingState } from '@/lib/actions/onboarding'
-import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
+import { OnboardingJoyride } from '@/components/dashboard/onboarding-joyride'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol, formatCurrency } from '@/lib/currency'
 
@@ -95,9 +95,9 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* Onboarding Checklist */}
+      {/* Onboarding Joyride Tour */}
       {isOwner && onboardingState && !onboardingState.isDismissed && (
-        <OnboardingChecklist state={onboardingState} />
+        <OnboardingJoyride state={onboardingState} />
       )}
 
       {/* Alert banner */}
