@@ -192,7 +192,7 @@ export default function NewSalePage() {
           className="flex items-center justify-between px-6 py-4 shrink-0"
           style={{ borderBottom: '1px solid var(--border-subtle)' }}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" data-joyride="sale">
             <Link
               href="/sales"
               className="flex items-center justify-center w-8 h-8 rounded-md transition-colors"

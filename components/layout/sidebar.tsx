@@ -186,13 +186,15 @@ export function Sidebar() {
 
       {/* Bottom: settings + collapse toggle */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <NavItem
-          href="/settings"
-          icon={Settings}
-          label="Settings"
-          isActive={pathname === '/settings'}
-          expanded={expanded}
-        />
+        <div data-joyride="store">
+          <NavItem
+            href="/settings"
+            icon={Settings}
+            label="Settings"
+            isActive={pathname === '/settings'}
+            expanded={expanded}
+          />
+        </div>
 
         {/* Collapse toggle — hidden on desktop, visible on mobile */}
         <button
