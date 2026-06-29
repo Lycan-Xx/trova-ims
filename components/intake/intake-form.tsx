@@ -603,7 +603,7 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
               )}
             </span>
             <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
-              ₦{fmt(costPerUnit)}
+              {getCurrencySymbol(currency)}{fmt(costPerUnit)}
             </span>
           </div>
         )}
