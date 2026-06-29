@@ -125,7 +125,8 @@ export function Sidebar() {
         top: 0,
         left: 0,
         zIndex: 40,
-        transition: 'width 200ms ease, min-width 200ms ease, padding 200ms ease',
+        transition: 'width 150ms ease, min-width 150ms ease, padding 150ms ease',
+        willChange: 'width',
         overflow: 'hidden',
       }}
     >

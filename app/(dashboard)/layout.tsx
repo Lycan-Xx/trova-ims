@@ -5,7 +5,6 @@ import { CurrencyProvider } from '@/components/providers/currency-provider'
 import { getCurrentUser } from '@/lib/auth'
 import { query } from '@/lib/db'
 import { redirect } from 'next/navigation'
-import { revalidateTag } from 'next/cache'
 
 export default async function DashboardLayout({
   children,
@@ -16,9 +15,6 @@ export default async function DashboardLayout({
   if (!user) redirect('/sign-in')
 
   // Fetch store info for currency context
-  // Revalidate cache when settings are updated
-  revalidateTag(`store-${user.store_id}`, 'max')
-  
   const storeResult = await query(
     'SELECT id, name, address, phone, currency, created_at FROM stores WHERE id = $1 LIMIT 1',
     [user.store_id],
@@ -38,15 +34,16 @@ export default async function DashboardLayout({
           }}
         >
           <Sidebar />
-          {/* Content shifts right by sidebar width via CSS var (default 64px) */}
+          {/* Content area — sidebar is fixed-position so we pad-left to avoid overlap */}
           <div
             style={{
               flex: 1,
-              marginLeft: 'var(--sidebar-w, 64px)',
+              paddingLeft: 'var(--sidebar-w, 64px)',
               display: 'flex',
               flexDirection: 'column',
               minHeight: 0,
-              transition: 'margin-left 200ms ease',
+              transition: 'padding-left 150ms ease',
+              willChange: 'padding-left',
             }}
           >
             <Topbar />
