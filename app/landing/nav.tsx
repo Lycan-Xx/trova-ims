@@ -5,13 +5,10 @@ export default function Nav() {
     <header className="sticky top-0 z-50 flex items-center justify-between px-6 md:px-10 h-14 border-b border-[var(--border-subtle)] bg-[rgba(13,13,13,0.88)] backdrop-blur-md">
       <div className="flex items-center gap-2.5">
         <span
-          className="w-7 h-7 rounded-[7px] bg-[var(--accent-primary)] flex items-center justify-center flex-shrink-0"
+          className="w-7 h-7 flex items-center justify-center flex-shrink-0"
           aria-hidden="true"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <rect x="1" y="5" width="5" height="8" rx="1" fill="white" />
-            <rect x="8" y="1" width="5" height="12" rx="1" fill="white" />
-          </svg>
+          <img src="/images/favicon.png" alt="Trova" width={28} height={28} className="rounded-[7px]" />
         </span>
         <span className="text-[15px] font-bold tracking-tight text-[var(--text-primary)]">
           Trova

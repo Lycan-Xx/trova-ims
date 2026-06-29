@@ -50,13 +50,8 @@ export function AuthForm({ mode }: AuthFormProps) {
       {/* Header */}
       <div className="mb-8 text-center">
         <div className="mb-3 flex items-center justify-center gap-2">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-lg"
-            style={{ background: 'var(--accent-primary)' }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/>
-            </svg>
+          <div className="flex h-9 w-9 items-center justify-center">
+            <img src="/images/favicon.png" alt="Trova" width={36} height={36} className="rounded-lg object-contain" />
           </div>
           <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Trova</span>
         </div>

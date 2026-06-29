@@ -18,7 +18,7 @@ export function AuthLayout({
         {/* Hero */}
         <section className="relative hidden lg:block lg:col-span-8 overflow-hidden">
           <Image
-            src="/images/auth/auth-bg.jpg"
+            src="/branding-assets.png"
             alt="Inventory management"
             fill
             priority
