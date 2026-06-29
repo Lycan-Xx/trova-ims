@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Circle, ArrowRight, X, Trash2, KeepSquare, Store, Users, PackagePlus, ShoppingCart } from 'lucide-react'
+import { CheckCircle2, Circle, ArrowRight, X, Trash2, CheckSquare2, Store, Users, PackagePlus, ShoppingCart } from 'lucide-react'
 import { dismissOnboarding, type OnboardingState } from '@/lib/actions/onboarding'
 
 interface Props {
