@@ -5,6 +5,8 @@ import { WeeklyChart } from '@/components/dashboard/weekly-chart'
 import { getSalesAnalytics } from '@/app/actions/analytics'
 import { getLowStockAlerts, getExpiryAlerts } from '@/app/actions/alerts'
 import { getCurrentUser } from '@/lib/auth'
+import { getOnboardingState } from '@/lib/actions/onboarding'
+import { OnboardingChecklist } from '@/components/dashboard/onboarding-checklist'
 
 function fmtCurrency(n: number): string {
   return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -34,7 +36,7 @@ export default async function DashboardPage() {
   const sevenDaysAgo = toDateStr(new Date(now.getTime() - 6 * 86_400_000))
 
   // Fetch all data in parallel — analytics only available to owners
-  const [todayResult, yesterdayResult, monthResult, weekResult, lowStockResult, expiryResult] =
+  const [todayResult, yesterdayResult, monthResult, weekResult, lowStockResult, expiryResult, onboardingResult] =
     await Promise.all([
       isOwner ? getSalesAnalytics(today, today) : Promise.resolve(null),
       isOwner ? getSalesAnalytics(yesterday, yesterday) : Promise.resolve(null),
@@ -42,12 +44,15 @@ export default async function DashboardPage() {
       isOwner ? getSalesAnalytics(sevenDaysAgo, today) : Promise.resolve(null),
       getLowStockAlerts(),
       getExpiryAlerts(7),
+      isOwner ? getOnboardingState() : Promise.resolve(null),
     ])
 
   const todayData = todayResult?.success ? todayResult.data : null
   const yesterdayData = yesterdayResult?.success ? yesterdayResult.data : null
   const monthData = monthResult?.success ? monthResult.data : null
   const weekData = weekResult?.success ? weekResult.data : null
+
+  const onboardingState = onboardingResult?.success ? onboardingResult.data : null
 
   const lowStockCount = lowStockResult.success ? lowStockResult.data.length : 0
   const expiryCount = expiryResult.success ? expiryResult.data.length : 0
@@ -84,6 +89,11 @@ export default async function DashboardPage() {
           {now.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
       </div>
+
+      {/* Onboarding Checklist */}
+      {isOwner && onboardingState && !onboardingState.isDismissed && (
+        <OnboardingChecklist state={onboardingState} />
+      )}
 
       {/* Alert banner */}
       {alertCount > 0 && (
