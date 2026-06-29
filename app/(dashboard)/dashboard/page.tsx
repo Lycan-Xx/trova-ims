@@ -248,7 +248,7 @@ export default async function DashboardPage() {
                 Full analytics &rarr;
               </Link>
             </div>
-            <WeeklyChart data={weeklyChartData} />
+            <WeeklyChart data={weeklyChartData} currencySymbol={currencySymbol} />
           </div>
 
           {/* RIGHT — Top Products Today */}

@@ -4,17 +4,17 @@ import { ArrowLeft, Building2 } from 'lucide-react'
 import { getVendorById } from '@/app/actions/vendors'
 import { Badge } from '@/components/ui/badge'
 import { VendorDetailClient } from '@/components/vendors/vendor-detail-client'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatNaira(value: string | number | null): string {
-  if (value === null || value === undefined) return '—'
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 2,
-  }).format(num)
+function makeFmtCurrency(symbol: string) {
+  return function formatCurrency(value: string | number | null): string {
+    if (value === null || value === undefined) return '—'
+    const num = typeof value === 'string' ? parseFloat(value) : value
+    return symbol + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
 }
 
 function formatDate(value: string | Date | null): string {
@@ -45,7 +45,11 @@ export default async function VendorDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const result = await getVendorById(id)
+  const [result, storeResult] = await Promise.all([getVendorById(id), getStoreSettings()])
+
+  const currency = storeResult.success ? storeResult.data.currency : 'NGN'
+  const currencySymbol = getCurrencySymbol(currency)
+  const formatCurrencyStr = makeFmtCurrency(currencySymbol)
 
   if (!result.success || !result.data) {
     redirect('/vendors')
@@ -203,7 +207,7 @@ export default async function VendorDetailPage({
             <table className="w-full min-w-[680px]" style={{ background: 'var(--bg-card)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Date', 'Product', 'Qty Received', 'Qty Remaining', 'Total Cost (₦)'].map((col, i) => (
+                  {['Date', 'Product', 'Qty Received', 'Qty Remaining', `Total Cost (${currencySymbol})`].map((col, i) => (
                     <th
                       key={col}
                       className={`px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wide ${i >= 2 ? 'text-right' : ''}`}
@@ -245,7 +249,7 @@ export default async function VendorDetailPage({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm tabular-nums text-right" style={{ color: 'var(--text-secondary)' }}>
-                      {formatNaira(batch.total_purchase_cost)}
+                      {formatCurrencyStr(batch.total_purchase_cost)}
                     </td>
                   </tr>
                 ))}
@@ -257,7 +261,7 @@ export default async function VendorDetailPage({
 
       {/* ── Outstanding consignment section ───────────────────────────────── */}
       {isConsignment && outstandingBatches.length > 0 && (
-        <OutstandingSection batches={outstandingBatches} />
+        <OutstandingSection batches={outstandingBatches} currencySymbol={currencySymbol} />
       )}
     </div>
   )
@@ -267,8 +271,10 @@ export default async function VendorDetailPage({
 
 function OutstandingSection({
   batches,
+  currencySymbol,
 }: {
   batches: import('@/app/actions/vendors').VendorBatchRow[]
+  currencySymbol: string
 }) {
   // We don't have selling price on VendorBatchRow; use total_purchase_cost / qty_received as estimate
   const totalValue = batches.reduce((sum, b) => {
@@ -276,12 +282,8 @@ function OutstandingSection({
     return sum + costPerUnit * b.qty_remaining
   }, 0)
 
-  function formatNaira(value: number): string {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 2,
-    }).format(value)
+  function formatCurrencyStr(value: number): string {
+    return currencySymbol + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   function formatDate(value: string | Date | null): string {
@@ -322,7 +324,7 @@ function OutstandingSection({
         <table className="w-full min-w-[560px]">
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(251,191,36,0.15)' }}>
-              {['Product', 'Batch Date', 'Qty Remaining', 'Est. Value (₦)'].map((col, i) => (
+              {['Product', 'Batch Date', 'Qty Remaining', `Est. Value (${currencySymbol})`].map((col, i) => (
                 <th
                   key={col}
                   className={`px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wide ${i >= 2 ? 'text-right' : ''}`}
@@ -354,7 +356,7 @@ function OutstandingSection({
                     {batch.qty_remaining}
                   </td>
                   <td className="px-4 py-3 text-sm tabular-nums text-right" style={{ color: 'var(--text-secondary)' }}>
-                    {formatNaira(estValue)}
+                    {formatCurrencyStr(estValue)}
                   </td>
                 </tr>
               )
@@ -367,7 +369,7 @@ function OutstandingSection({
                 Total outstanding value
               </td>
               <td className="px-4 py-3 text-sm tabular-nums text-right font-bold" style={{ color: 'var(--warning)' }}>
-                {formatNaira(totalValue)}
+                {formatCurrencyStr(totalValue)}
               </td>
             </tr>
           </tfoot>

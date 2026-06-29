@@ -11,8 +11,10 @@ import {
 } from 'recharts'
 import type { DailyRevenue } from '@/app/actions/analytics'
 
-function fmtCurrency(n: number): string {
-  return '₦' + n.toLocaleString('en-NG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+function makeFmtCurrency(symbol: string) {
+  return function fmtCurrency(n: number): string {
+    return symbol + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  }
 }
 
 function RevenueTooltip({
@@ -23,6 +25,7 @@ function RevenueTooltip({
   active?: boolean
   payload?: { value: number }[]
   label?: string
+  fmtCurrency: (n: number) => string
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -42,9 +45,11 @@ function RevenueTooltip({
 
 interface WeeklyChartProps {
   data: DailyRevenue[]
+  currencySymbol: string
 }
 
-export function WeeklyChart({ data }: WeeklyChartProps) {
+export function WeeklyChart({ data, currencySymbol }: WeeklyChartProps) {
+  const fmtCurrency = makeFmtCurrency(currencySymbol)
   const chartData = data.map((d) => ({
     date: new Date(d.date).toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric' }),
     revenue: d.revenue,
@@ -80,10 +85,10 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
           axisLine={false}
           tickLine={false}
           tickFormatter={(v: number) =>
-            v >= 1000 ? '₦' + (v / 1000).toFixed(0) + 'k' : '₦' + v
+            v >= 1000 ? currencySymbol + (v / 1000).toFixed(0) + 'k' : currencySymbol + v
           }
         />
-        <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'var(--bg-card-hover)' }} />
+        <Tooltip content={<RevenueTooltip fmtCurrency={fmtCurrency} />} cursor={{ fill: 'var(--bg-card-hover)' }} />
         <Bar
           dataKey="revenue"
           fill="var(--accent-primary)"

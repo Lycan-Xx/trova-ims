@@ -29,7 +29,7 @@ export function formatCurrency(amount: string | number, currencyCode: string): s
 
   if (isNaN(numAmount)) return `${symbol}0.00`
 
-  return `${symbol}${numAmount.toFixed(2)}`
+  return symbol + numAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function formatCurrencyPlain(amount: string | number): string {

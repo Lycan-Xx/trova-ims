@@ -1,5 +1,7 @@
 import { getBatches } from '@/app/actions/batches'
 import { getVendors } from '@/app/actions/vendors'
+import { getStoreSettings } from '@/app/actions/settings'
+import { getCurrencySymbol } from '@/lib/currency'
 import { IntakeList } from '@/components/intake/intake-list'
 import type { GetBatchesFilters } from '@/app/actions/batches'
 
@@ -24,9 +26,10 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
     page: params.page ? parseInt(params.page, 10) : 1,
   }
 
-  const [batchesResult, vendorsResult] = await Promise.all([
+  const [batchesResult, vendorsResult, storeResult] = await Promise.all([
     getBatches(filters),
     getVendors(),
+    getStoreSettings(),
   ])
 
   const batches = batchesResult.success ? batchesResult.data.batches : []
@@ -34,6 +37,8 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
   const totalCount = batchesResult.success ? batchesResult.data.totalCount : 0
   const currentPage = filters.page ?? 1
   const vendors = vendorsResult.success ? vendorsResult.data : []
+  const currency = storeResult.success ? storeResult.data.currency : 'NGN'
+  const currencySymbol = getCurrencySymbol(currency)
 
   return (
     <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-[1200px]">
@@ -52,6 +57,7 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
         totalPages={totalPages}
         currentPage={currentPage}
         totalCount={totalCount}
+        currencySymbol={currencySymbol}
       />
     </div>
   )

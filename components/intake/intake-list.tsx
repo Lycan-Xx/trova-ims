@@ -22,11 +22,12 @@ interface IntakeListProps {
   totalPages: number
   currentPage: number
   totalCount: number
+  currencySymbol: string
 }
 
-function formatNaira(value: string | number): string {
+function formatCurrencyStr(value: string | number, symbol: string): string {
   const num = typeof value === 'string' ? parseFloat(value) : value
-  return '₦' + num.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return symbol + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatDate(value: string): string {
@@ -66,6 +67,7 @@ export function IntakeList({
   totalPages,
   currentPage,
   totalCount,
+  currencySymbol,
 }: IntakeListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -309,7 +311,7 @@ export function IntakeList({
                   {/* Cost / Unit */}
                   <td className="px-4 py-3">
                     <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                      {formatNaira(batch.cost_per_unit)}
+                      {formatCurrencyStr(batch.cost_per_unit, currencySymbol)}
                     </span>
                   </td>
 
