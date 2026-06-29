@@ -12,6 +12,10 @@ export function RestartTutorialButton() {
   const handleRestart = () => {
     startTransition(async () => {
       await restartOnboarding()
+      // Clear saved step index so the tour recalculates from scratch
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('onboarding_step_index')
+      }
       router.push('/dashboard')
     })
   }

@@ -20,9 +20,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/products',  icon: Package,         label: 'Products'  },
-  { href: '/vendors',   icon: Truck,            label: 'Vendors'   },
-  { href: '/intake',    icon: ClipboardList,    label: 'Intake'    },
-  { href: '/sales',     icon: ShoppingCart,     label: 'Sales'     },
+  { href: '/vendors',   icon: Truck,            label: 'Vendors',   joyrideId: 'nav-vendors'  },
+  { href: '/intake',    icon: ClipboardList,    label: 'Intake',    joyrideId: 'nav-intake'   },
+  { href: '/sales',     icon: ShoppingCart,     label: 'Sales',     joyrideId: 'nav-sales'    },
   { href: '/alerts',    icon: Bell,             label: 'Alerts'    },
   { href: '/analytics', icon: BarChart2,        label: 'Analytics' },
 ]
@@ -36,14 +36,16 @@ interface NavItemProps {
   label: string
   isActive: boolean
   expanded: boolean
+  joyrideId?: string
 }
 
-function NavItem({ href, icon: Icon, label, isActive, expanded }: NavItemProps) {
+function NavItem({ href, icon: Icon, label, isActive, expanded, joyrideId }: NavItemProps) {
   const item = (
     <Link
       href={href}
       aria-label={label}
       aria-current={isActive ? 'page' : undefined}
+      {...(joyrideId ? { 'data-joyride': joyrideId } : {})}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -169,7 +171,7 @@ export function Sidebar() {
         style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, width: '100%' }}
         aria-label="Main navigation"
       >
-        {NAV_ITEMS.map(({ href, icon, label }) => {
+        {NAV_ITEMS.map(({ href, icon, label, joyrideId }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/')
           return (
             <NavItem
@@ -179,6 +181,7 @@ export function Sidebar() {
               label={label}
               isActive={isActive}
               expanded={expanded}
+              joyrideId={joyrideId}
             />
           )
         })}
@@ -186,15 +189,14 @@ export function Sidebar() {
 
       {/* Bottom: settings + collapse toggle */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div data-joyride="store">
-          <NavItem
-            href="/settings"
-            icon={Settings}
-            label="Settings"
-            isActive={pathname === '/settings'}
-            expanded={expanded}
-          />
-        </div>
+        <NavItem
+          href="/settings"
+          icon={Settings}
+          label="Settings"
+          isActive={pathname === '/settings'}
+          expanded={expanded}
+          joyrideId="nav-settings"
+        />
 
         {/* Collapse toggle — hidden on desktop, visible on mobile */}
         <button
