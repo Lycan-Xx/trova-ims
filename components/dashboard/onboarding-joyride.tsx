@@ -46,8 +46,16 @@ export function OnboardingJoyride({ state }: Props) {
       skipBeacon: true,
     },
     {
+      target: '[data-joyride="nav-products"]',
+      title: '③ Add your first Product',
+      content:
+        'Go to Products and add an item to your catalog. Stock Intake needs at least one product to exist before you can log a batch.',
+      placement: 'right',
+      skipBeacon: true,
+    },
+    {
       target: '[data-joyride="nav-intake"]',
-      title: '③ Log your first Stock Intake',
+      title: '④ Log your first Stock Intake',
       content:
         'Go to Intake and record your first product batch. This establishes your inventory baseline.',
       placement: 'right',
@@ -55,7 +63,7 @@ export function OnboardingJoyride({ state }: Props) {
     },
     {
       target: '[data-joyride="nav-sales"]',
-      title: '④ Make a Test Sale',
+      title: '⑤ Make a Test Sale',
       content:
         'Visit Sales to process a test transaction. This helps you understand how sales are tracked in the system.',
       placement: 'right',
@@ -67,10 +75,11 @@ export function OnboardingJoyride({ state }: Props) {
   const getInitialStepIndex = useCallback((): number => {
     if (!state.hasStoreSetup) return 0
     if (!state.hasVendor) return 1
-    if (!state.hasIntake) return 2
-    if (!state.hasSale) return 3
+    if (!state.hasProduct) return 2
+    if (!state.hasIntake) return 3
+    if (!state.hasSale) return 4
     return 0 // all done — doesn't matter, we'll show completion
-  }, [state.hasStoreSetup, state.hasVendor, state.hasIntake, state.hasSale])
+  }, [state.hasStoreSetup, state.hasVendor, state.hasProduct, state.hasIntake, state.hasSale])
 
   // On mount, decide whether to show the tour or the completion modal
   useEffect(() => {

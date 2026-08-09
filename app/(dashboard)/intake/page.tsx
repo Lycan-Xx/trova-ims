@@ -26,6 +26,8 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
     vendorId: params.vendorId,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
+    search: params.search,
+    consignmentOnly: params.consignment === 'true',
     page: params.page ? parseInt(params.page, 10) : 1,
   }
 

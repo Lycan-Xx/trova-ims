@@ -136,6 +136,37 @@ export async function updateProduct(
   }
 }
 
+// ─── deactivateProduct ────────────────────────────────────────────────────────
+// Soft delete only — never hard delete, since batches/sale_items reference
+// products via foreign keys and historical records must stay intact.
+
+export async function deactivateProduct(
+  productId: string,
+): Promise<{ success: true; data: Product } | { success: false; error: string }> {
+  try {
+    const user = await requireOwner()
+
+    const existing = await query(
+      'SELECT id FROM products WHERE id = $1 AND store_id = $2 LIMIT 1',
+      [productId, user.store_id],
+    )
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Product not found or access denied.' }
+    }
+
+    const result = await query(
+      `UPDATE products SET is_active = false
+       WHERE id = $1 AND store_id = $2
+       RETURNING *`,
+      [productId, user.store_id],
+    )
+
+    return { success: true, data: result.rows[0] as Product }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
 // ─── getProducts ──────────────────────────────────────────────────────────────
 
 export async function getProducts(

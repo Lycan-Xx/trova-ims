@@ -278,7 +278,7 @@ export function IntakeList({
                   {/* Batch Reference */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="mono text-[12px] font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {batch.reference_number || batch.id.slice(0, 8).toUpperCase()}
+                      {batch.batch_ref || batch.id.slice(0, 8).toUpperCase()}
                     </span>
                   </td>
 

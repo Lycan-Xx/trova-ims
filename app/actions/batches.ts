@@ -23,6 +23,8 @@ export interface GetBatchesFilters {
   vendorId?: string
   dateFrom?: string
   dateTo?: string
+  search?: string
+  consignmentOnly?: boolean
   page?: number
 }
 
@@ -182,11 +184,22 @@ export async function getBatches(
       idx++
     }
 
+    if (filters.search) {
+      conditions.push(`(p.name ILIKE $${idx} OR p.sku ILIKE $${idx})`)
+      params.push(`%${filters.search}%`)
+      idx++
+    }
+
+    if (filters.consignmentOnly) {
+      conditions.push('b.is_consignment = true')
+    }
+
     const whereClause = conditions.join(' AND ')
 
     const countResult = await query(
       `SELECT COUNT(*) AS total
        FROM batches b
+       JOIN products p ON p.id = b.product_id
        WHERE ${whereClause}`,
       params,
     )

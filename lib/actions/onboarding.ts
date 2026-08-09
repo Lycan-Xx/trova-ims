@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 export interface OnboardingState {
   hasStoreSetup: boolean
   hasVendor: boolean
+  hasProduct: boolean
   hasIntake: boolean
   hasSale: boolean
   isDismissed: boolean
@@ -22,23 +23,26 @@ export async function getOnboardingState(): Promise<{ success: true; data: Onboa
     const store = storeRes.rows[0]
 
     const vendorsRes = await query(`SELECT COUNT(*)::int as count FROM vendors WHERE store_id = $1`, [user.store_id])
+    const productsRes = await query(`SELECT COUNT(*)::int as count FROM products WHERE store_id = $1`, [user.store_id])
     const batchesRes = await query(`SELECT COUNT(*)::int as count FROM batches WHERE store_id = $1`, [user.store_id])
     const salesRes = await query(`SELECT COUNT(*)::int as count FROM sales WHERE store_id = $1`, [user.store_id])
 
     // If they changed the default name from "My Store" or if they have vendors/products, we consider store setup done
     const hasStoreSetup = store.name !== 'My Store' || vendorsRes.rows[0].count > 0 || store.currency !== 'NGN'
     const hasVendor = vendorsRes.rows[0].count > 0
+    const hasProduct = productsRes.rows[0].count > 0
     const hasIntake = batchesRes.rows[0].count > 0
     const hasSale = salesRes.rows[0].count > 0
     const isDismissed = store.onboarding_dismissed
 
-    const isComplete = hasStoreSetup && hasVendor && hasIntake && hasSale
+    const isComplete = hasStoreSetup && hasVendor && hasProduct && hasIntake && hasSale
 
     return {
       success: true,
       data: {
         hasStoreSetup,
         hasVendor,
+        hasProduct,
         hasIntake,
         hasSale,
         isDismissed,

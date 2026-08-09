@@ -21,7 +21,7 @@ import { getAccessiblePages, PageFeature } from '@/lib/auth/role-access'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/products',  icon: Package,         label: 'Products'  },
+  { href: '/products',  icon: Package,         label: 'Products',  joyrideId: 'nav-products' },
   { href: '/vendors',   icon: Truck,            label: 'Vendors',   joyrideId: 'nav-vendors'  },
   { href: '/intake',    icon: ClipboardList,    label: 'Intake',    joyrideId: 'nav-intake'   },
   { href: '/sales',     icon: ShoppingCart,     label: 'Sales',     joyrideId: 'nav-sales'    },
