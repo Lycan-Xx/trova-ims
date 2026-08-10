@@ -1,6 +1,8 @@
 'use server'
 
-import { query } from '@/lib/db'
+import { randomUUID } from 'crypto'
+import type { ClientBase } from 'pg'
+import { query, withConnection } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/auth'
 import type { Batch, Product, Vendor } from '@/lib/db/schema'
 
@@ -25,6 +27,7 @@ export interface GetBatchesFilters {
   dateTo?: string
   search?: string
   consignmentOnly?: boolean
+  sessionId?: string
   page?: number
 }
 
@@ -37,11 +40,7 @@ export interface StockSummaryRow {
   status: 'in_stock' | 'low_stock' | 'out_of_stock'
 }
 
-const PAGE_SIZE = 20
-
-// ─── createBatch ─────────────────────────────────────────────────────────────
-
-export async function createBatch(formData: {
+export interface IntakeLineInput {
   productId: string
   vendorId?: string | null
   purchaseMode: 'unit' | 'pack'
@@ -51,117 +50,172 @@ export async function createBatch(formData: {
   sellingPriceOverride?: number | null
   expiryDate?: Date | null
   supplierLotNumber?: string | null
-  notes?: string | null
   isConsignment?: boolean
-}): Promise<{ success: true; data: Batch } | { success: false; error: string }> {
+}
+
+export interface CreateBatchSessionResult {
+  /** Null when the submission was a single line — no grouping needed. */
+  sessionId: string | null
+  batches: Batch[]
+}
+
+const PAGE_SIZE = 20
+
+// ─── createBatchSession ─────────────────────────────────────────────────────
+//
+// Records one or more batches from a single Stock Intake submission — e.g.
+// one restock trip covering several products and/or several vendors — as
+// one all-or-nothing transaction. If any line fails validation, nothing
+// commits: stock counts should never drift from reality because line 9 of
+// 14 quietly failed while the rest went through. See
+// docs/intake-sessions.md for the full design rationale.
+//
+// Lines sharing one submission get a shared, generated intake_session_id
+// stamped on every batch (null when there's only one line — a plain
+// one-off intake, exactly as it's always worked). Every batch also keeps
+// its own vendor_id/product_id — the session is a grouping tag layered on
+// top of the existing one-batch-one-product-one-vendor model, not a change
+// to it.
+
+export async function createBatchSession(formData: {
+  receivedAt: Date
+  notes?: string | null
+  lines: IntakeLineInput[]
+}): Promise<
+  { success: true; data: CreateBatchSessionResult } | { success: false; error: string }
+> {
+  const user = await requireStoreAccess()
+
+  if (!formData.lines || formData.lines.length === 0) {
+    return { success: false, error: 'Add at least one product line before submitting.' }
+  }
+
   try {
-    const user = await requireStoreAccess()
+    const data = await withConnection(async (client: ClientBase) => {
+      await client.query('BEGIN')
 
-    // Verify product belongs to this store
-    const productResult = await query(
-      'SELECT id FROM products WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
-      [formData.productId, user.store_id],
-    )
-    if (productResult.rows.length === 0) {
-      return { success: false, error: 'Product not found or access denied.' }
-    }
+      try {
+        const sessionId = formData.lines.length > 1 ? randomUUID() : null
+        const datePart = formData.receivedAt.toISOString().slice(0, 10).replace(/-/g, '')
 
-    // Verify vendor belongs to this store (if provided)
-    let isConsignment = formData.isConsignment ?? false
-    if (formData.vendorId) {
-      const vendorResult = await query(
-        'SELECT id, type FROM vendors WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
-        [formData.vendorId, user.store_id],
-      )
-      if (vendorResult.rows.length === 0) {
-        return { success: false, error: 'Vendor not found or access denied.' }
+        // Starting sequence for the auto-generated batch_ref, based on how
+        // many batches this store already has for the chosen date. Each
+        // line in this submission increments it, so a 5-line session gets
+        // 5 consecutive references (…-004, …-005, …-006…) instead of a
+        // collision.
+        const todayCountRes = await client.query(
+          `SELECT COUNT(*)::int AS count FROM batches
+           WHERE store_id = $1 AND received_at::date = $2::date`,
+          [user.store_id, formData.receivedAt],
+        )
+        let seq = (todayCountRes.rows[0].count as number) + 1
+
+        const createdBatches: Batch[] = []
+
+        for (let i = 0; i < formData.lines.length; i++) {
+          const line = formData.lines[i]
+          const lineLabel = formData.lines.length > 1 ? `Line ${i + 1}: ` : ''
+
+          const productRes = await client.query(
+            'SELECT id FROM products WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
+            [line.productId, user.store_id],
+          )
+          if (productRes.rows.length === 0) {
+            throw new Error(`${lineLabel}product not found or inactive.`)
+          }
+
+          let isConsignment = line.isConsignment ?? false
+          if (line.vendorId) {
+            const vendorRes = await client.query(
+              'SELECT id, type FROM vendors WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
+              [line.vendorId, user.store_id],
+            )
+            if (vendorRes.rows.length === 0) {
+              throw new Error(`${lineLabel}vendor not found or inactive.`)
+            }
+            if ((vendorRes.rows[0] as Vendor).type === 'consignment') {
+              isConsignment = true
+            }
+          }
+
+          const packSize = line.packSize ?? 1
+          const actualUnits =
+            line.purchaseMode === 'pack' ? line.qtyReceived * packSize : line.qtyReceived
+
+          if (actualUnits <= 0) {
+            throw new Error(`${lineLabel}quantity must be greater than zero.`)
+          }
+          if (line.totalPurchaseCost < 0) {
+            throw new Error(`${lineLabel}total purchase cost cannot be negative.`)
+          }
+
+          const costPerUnit = line.totalPurchaseCost > 0 ? line.totalPurchaseCost / actualUnits : 0
+          const batchRef = `INT-${datePart}-${String(seq).padStart(3, '0')}`
+          seq++
+
+          const insertRes = await client.query(
+            `INSERT INTO batches (
+              id, store_id, product_id, vendor_id, batch_ref, supplier_lot_number,
+              qty_received, qty_remaining, pack_size, total_purchase_cost, cost_per_unit,
+              selling_price_override, expiry_date, is_consignment, notes,
+              received_at, received_by_id, intake_session_id
+            ) VALUES (
+              gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+            ) RETURNING *`,
+            [
+              user.store_id,
+              line.productId,
+              line.vendorId ?? null,
+              batchRef,
+              line.supplierLotNumber?.trim() || null,
+              actualUnits,
+              actualUnits,
+              packSize,
+              line.totalPurchaseCost,
+              costPerUnit,
+              line.sellingPriceOverride ?? null,
+              line.expiryDate ?? null,
+              isConsignment,
+              formData.notes?.trim() || null,
+              formData.receivedAt,
+              user.id,
+              sessionId,
+            ],
+          )
+          createdBatches.push(insertRes.rows[0] as Batch)
+        }
+
+        await client.query('COMMIT')
+        return { sessionId, batches: createdBatches }
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
       }
-      // Auto-set consignment if vendor type is consignment
-      if ((vendorResult.rows[0] as Vendor).type === 'consignment') {
-        isConsignment = true
-      }
-    }
+    })
 
-    // Compute unit quantities and cost
-    const packSize = formData.packSize ?? 1
-    const actualUnits =
-      formData.purchaseMode === 'pack'
-        ? formData.qtyReceived * packSize
-        : formData.qtyReceived
-
-    if (actualUnits <= 0) {
-      return { success: false, error: 'Quantity must be greater than zero.' }
-    }
-    if (formData.totalPurchaseCost < 0) {
-      return { success: false, error: 'Total purchase cost cannot be negative.' }
-    }
-
-    const costPerUnit =
-      formData.totalPurchaseCost > 0
-        ? formData.totalPurchaseCost / actualUnits
-        : 0
-
-    // Auto-generate the internal batch reference: INT-YYYYMMDD-### where ###
-    // is that store's running count of batches received today. This used to
-    // be a free-text field the user had to fill in by hand every time — now
-    // it's always present without asking, and the supplier's own lot code
-    // (if the delivery has one) is captured separately below.
-    const today = new Date()
-    const datePart = today.toISOString().slice(0, 10).replace(/-/g, '')
-    const todayCountResult = await query(
-      `SELECT COUNT(*)::int AS count FROM batches
-       WHERE store_id = $1 AND received_at::date = CURRENT_DATE`,
-      [user.store_id],
-    )
-    const seq = (todayCountResult.rows[0].count as number) + 1
-    const batchRef = `INT-${datePart}-${String(seq).padStart(3, '0')}`
-
-    const result = await query(
-      `INSERT INTO batches (
-        id,
-        store_id,
-        product_id,
-        vendor_id,
-        batch_ref,
-        supplier_lot_number,
-        qty_received,
-        qty_remaining,
-        pack_size,
-        total_purchase_cost,
-        cost_per_unit,
-        selling_price_override,
-        expiry_date,
-        is_consignment,
-        notes,
-        received_at,
-        received_by_id
-      ) VALUES (
-        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15
-      ) RETURNING *`,
-      [
-        user.store_id,
-        formData.productId,
-        formData.vendorId ?? null,
-        batchRef,
-        formData.supplierLotNumber?.trim() || null,
-        actualUnits,           // qty_received stored as actual units
-        actualUnits,           // qty_remaining starts equal to qty_received
-        packSize,
-        formData.totalPurchaseCost,
-        costPerUnit,
-        formData.sellingPriceOverride ?? null,
-        formData.expiryDate ?? null,
-        isConsignment,
-        formData.notes ?? null,
-        user.id,
-      ],
-    )
-
-    return { success: true, data: result.rows[0] as Batch }
+    return { success: true, data }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }
 }
+
+// ─── createBatch ─────────────────────────────────────────────────────────────
+// Thin single-line convenience wrapper around createBatchSession, kept for
+// any call site that only ever needs to record one batch at a time.
+
+export async function createBatch(
+  formData: { receivedAt?: Date; notes?: string | null } & IntakeLineInput,
+): Promise<{ success: true; data: Batch } | { success: false; error: string }> {
+  const { receivedAt, notes, ...line } = formData
+  const result = await createBatchSession({
+    receivedAt: receivedAt ?? new Date(),
+    notes,
+    lines: [line],
+  })
+  if (!result.success) return result
+  return { success: true, data: result.data.batches[0] }
+}
+
 
 // ─── getBatches ───────────────────────────────────────────────────────────────
 
@@ -209,6 +263,12 @@ export async function getBatches(
 
     if (filters.consignmentOnly) {
       conditions.push('b.is_consignment = true')
+    }
+
+    if (filters.sessionId) {
+      conditions.push(`b.intake_session_id = $${idx}`)
+      params.push(filters.sessionId)
+      idx++
     }
 
     const whereClause = conditions.join(' AND ')
@@ -294,6 +354,7 @@ export async function getBatchById(
       vendor_id: row.vendor_id as string | null,
       batch_ref: row.batch_ref as string | null,
       supplier_lot_number: row.supplier_lot_number as string | null,
+      intake_session_id: row.intake_session_id as string | null,
       qty_received: row.qty_received as number,
       qty_remaining: row.qty_remaining as number,
       pack_size: row.pack_size as number,
