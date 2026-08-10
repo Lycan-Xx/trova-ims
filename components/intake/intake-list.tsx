@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Search, ChevronLeft, ChevronRight, InboxIcon } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, InboxIcon, Layers, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,6 +23,7 @@ interface IntakeListProps {
   currentPage: number
   totalCount: number
   currencySymbol: string
+  activeSessionId?: string
 }
 
 function formatCurrencyStr(value: string | number, symbol: string): string {
@@ -68,6 +69,7 @@ export function IntakeList({
   currentPage,
   totalCount,
   currencySymbol,
+  activeSessionId,
 }: IntakeListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -84,6 +86,14 @@ export function IntakeList({
     }
     if (key !== 'page') params.delete('page')
     router.push(`${pathname}?${params.toString()}`)
+  }
+
+  function viewSession(sessionId: string) {
+    router.push(`${pathname}?session=${sessionId}`)
+  }
+
+  function clearSession() {
+    updateParam('session', null)
   }
 
   function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,6 +129,37 @@ export function IntakeList({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Session banner */}
+      {activeSessionId && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg px-4 py-3"
+          style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
+        >
+          <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <Layers size={15} style={{ color: 'var(--accent-primary)' }} />
+            <span>
+              Showing {batches.length} batch{batches.length !== 1 ? 'es' : ''} from one intake session —
+              total cost{' '}
+              <span className="mono font-semibold" style={{ color: 'var(--accent-primary)' }}>
+                {formatCurrencyStr(
+                  batches.reduce((sum, b) => sum + parseFloat(b.total_purchase_cost), 0),
+                  currencySymbol,
+                )}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={clearSession}
+            className="flex items-center gap-1 text-xs font-medium shrink-0"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <X size={13} />
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Product search */}
@@ -277,9 +318,25 @@ export function IntakeList({
 
                   {/* Batch Reference */}
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="mono text-[12px] font-medium" style={{ color: 'var(--text-primary)' }}>
-                      {batch.reference_number || batch.id.slice(0, 8).toUpperCase()}
+                    <span className="mono text-[12px] font-medium block" style={{ color: 'var(--text-primary)' }}>
+                      {batch.batch_ref || batch.id.slice(0, 8).toUpperCase()}
                     </span>
+                    {batch.supplier_lot_number && (
+                      <span className="mono text-[11px] block" style={{ color: 'var(--text-muted)' }}>
+                        Lot: {batch.supplier_lot_number}
+                      </span>
+                    )}
+                    {batch.intake_session_id && !activeSessionId && (
+                      <button
+                        type="button"
+                        onClick={() => viewSession(batch.intake_session_id!)}
+                        className="flex items-center gap-1 text-[11px] mt-0.5 transition-colors"
+                        style={{ color: 'var(--accent-primary)' }}
+                      >
+                        <Layers size={11} />
+                        Same trip
+                      </button>
+                    )}
                   </td>
 
                   {/* Product */}

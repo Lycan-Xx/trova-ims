@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, Circle, ArrowRight, X, Trash2, CheckSquare2, Store, Users, PackagePlus, ShoppingCart } from 'lucide-react'
+import { CheckCircle2, Circle, ArrowRight, X, Trash2, CheckSquare2, Store, Users, Package, PackagePlus, ShoppingCart } from 'lucide-react'
 import { dismissOnboarding, type OnboardingState } from '@/lib/actions/onboarding'
 
 interface Props {
@@ -31,9 +31,17 @@ export function OnboardingChecklist({ state }: Props) {
       icon: Users,
     },
     {
+      id: 'product',
+      title: 'Add your first Product',
+      description: 'Create a catalog item — required before you can log stock intake.',
+      isDone: state.hasProduct,
+      href: '/products',
+      icon: Package,
+    },
+    {
       id: 'intake',
       title: 'Log your first Stock Intake',
-      description: 'Add a product and record its initial stock.',
+      description: 'Record a batch of stock for one of your products.',
       isDone: state.hasIntake,
       href: '/intake',
       icon: PackagePlus,

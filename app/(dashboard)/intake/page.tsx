@@ -12,6 +12,7 @@ interface IntakePageProps {
     dateFrom?: string
     dateTo?: string
     consignment?: string
+    session?: string
     page?: string
   }>
 }
@@ -26,6 +27,9 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
     vendorId: params.vendorId,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
+    search: params.search,
+    consignmentOnly: params.consignment === 'true',
+    sessionId: params.session,
     page: params.page ? parseInt(params.page, 10) : 1,
   }
 
@@ -61,6 +65,7 @@ export default async function IntakePage({ searchParams }: IntakePageProps) {
         currentPage={currentPage}
         totalCount={totalCount}
         currencySymbol={currencySymbol}
+        activeSessionId={params.session}
       />
     </div>
   )

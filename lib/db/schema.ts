@@ -66,6 +66,8 @@ export interface Batch {
   product_id: string
   vendor_id: string | null
   batch_ref: string | null
+  supplier_lot_number: string | null
+  intake_session_id: string | null
   qty_received: number
   qty_remaining: number
   pack_size: number

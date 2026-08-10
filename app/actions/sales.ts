@@ -96,14 +96,18 @@ export async function createSale(
           }
           const product = productRes.rows[0]
 
-          // Fetch all batches with remaining stock, FEFO order
+          // Fetch all batches with remaining stock, FEFO order.
+          // FOR UPDATE locks these rows for the duration of the transaction so
+          // concurrent sales (e.g. two cashiers checking out the same product
+          // at once) can't both read the same qty_remaining and oversell.
           const batchRes = await client.query(
             `SELECT id, qty_remaining, selling_price_override, expiry_date
              FROM batches
              WHERE product_id = $1
                AND store_id = $2
                AND qty_remaining > 0
-             ORDER BY expiry_date ASC NULLS LAST, received_at ASC`,
+             ORDER BY expiry_date ASC NULLS LAST, received_at ASC
+             FOR UPDATE`,
             [item.productId, user.store_id],
           )
 
@@ -351,6 +355,55 @@ export async function getSales(filters?: {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch sales.'
+    return { success: false, error: message }
+  }
+}
+
+// ── getEffectiveUnitPrices ───────────────────────────────────────────────────
+//
+// The POS cart previews a total using product.selling_price, but createSale()
+// actually charges whatever the next FEFO batch's selling_price_override
+// resolves to (falling back to the product price if unset). Those two numbers
+// can silently diverge whenever a batch was intake'd with an overridden
+// selling price. This gives the cart the real, about-to-be-charged price for
+// each product so the on-screen total always matches the receipt.
+
+export async function getEffectiveUnitPrices(
+  productIds: string[],
+): Promise<{ success: true; data: Record<string, number> } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+
+  if (productIds.length === 0) return { success: true, data: {} }
+
+  try {
+    // For each product, the price that would be charged is the
+    // selling_price_override of the *next* batch to be deducted in FEFO
+    // order (earliest expiry, then oldest received), or the product's
+    // default selling_price if that batch has no override or there's no
+    // stock at all yet.
+    const result = await query(
+      `SELECT DISTINCT ON (p.id)
+         p.id AS product_id,
+         COALESCE(b.selling_price_override, p.selling_price) AS effective_price
+       FROM products p
+       LEFT JOIN batches b
+         ON b.product_id = p.id
+         AND b.store_id = p.store_id
+         AND b.qty_remaining > 0
+       WHERE p.id = ANY($1) AND p.store_id = $2
+       ORDER BY p.id, b.expiry_date ASC NULLS LAST, b.received_at ASC`,
+      [productIds, user.store_id],
+    )
+
+    const prices: Record<string, number> = {}
+    for (const row of result.rows as { product_id: string; effective_price: string }[]) {
+      prices[row.product_id] = parseFloat(row.effective_price)
+    }
+
+    return { success: true, data: prices }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch prices.'
     return { success: false, error: message }
   }
 }

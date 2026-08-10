@@ -24,6 +24,12 @@ interface VendorSlideOverProps {
   onOpenChange: (open: boolean) => void
   /** If provided, opens in edit mode pre-populated with this vendor */
   vendor?: Vendor | null
+  /**
+   * Called right after a new vendor is successfully created (not on edit).
+   * Lets an embedding form — e.g. Stock Intake — select the new vendor
+   * immediately, without waiting for router.refresh() to re-fetch the page.
+   */
+  onCreated?: (vendor: Vendor) => void
 }
 
 interface FormErrors {
@@ -83,7 +89,7 @@ const VENDOR_TYPES: {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-export function VendorSlideOver({ open, onOpenChange, vendor }: VendorSlideOverProps) {
+export function VendorSlideOver({ open, onOpenChange, vendor, onCreated }: VendorSlideOverProps) {
   const router = useRouter()
   const isEditing = !!vendor
 
@@ -148,6 +154,7 @@ export function VendorSlideOver({ open, onOpenChange, vendor }: VendorSlideOverP
         const result = await createVendor(payload)
         if (!result.success) { toast.error(result.error); return }
         toast.success('Vendor added.')
+        onCreated?.(result.data)
       }
       onOpenChange(false)
       router.refresh()

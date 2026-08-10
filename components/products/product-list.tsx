@@ -21,6 +21,8 @@ import {
 import { ProductSlideOver } from '@/components/products/product-slide-over'
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
+import { deactivateProduct } from '@/app/actions/products'
+import { toast } from 'sonner'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category } from '@/lib/db/schema'
 
@@ -57,6 +59,21 @@ export function ProductList({
   function openAdd() {
     setEditingProduct(null)
     setSlideOverOpen(true)
+  }
+
+  async function handleDeactivate(product: ProductWithStock) {
+    const confirmed = window.confirm(
+      `Deactivate "${product.name}"? It will be hidden from the catalog and POS search, but its stock history stays intact. You can't undo this from the UI yet.`,
+    )
+    if (!confirmed) return
+
+    const result = await deactivateProduct(product.id)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success(`${product.name} deactivated.`)
+    router.refresh()
   }
 
   function openEdit(product: ProductWithStock) {
@@ -260,6 +277,12 @@ export function ProductList({
                         </DropdownMenuItem>
                         <DropdownMenuItem className="cursor-pointer hover:bg-bg-input focus:bg-bg-input">
                           View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="cursor-pointer text-danger hover:bg-bg-input focus:bg-bg-input"
+                          onClick={() => handleDeactivate(product)}
+                        >
+                          Deactivate
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

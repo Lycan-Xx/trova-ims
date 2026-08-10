@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Check, ChevronsUpDown, ChevronLeft, Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, Loader2, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -16,16 +16,48 @@ import {
 } from '@/components/ui/command'
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
-import { createBatch } from '@/app/actions/batches'
+import { createBatchSession, type IntakeLineInput } from '@/app/actions/batches'
+import { ProductSlideOver } from '@/components/products/product-slide-over'
+import { VendorSlideOver } from '@/components/vendors/vendor-slide-over'
 import type { VendorWithStats } from '@/app/actions/vendors'
 import type { ProductWithStock } from '@/app/actions/products'
+import type { Category, Product, Vendor } from '@/lib/db/schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface IntakeFormProps {
   products: ProductWithStock[]
   vendors: VendorWithStats[]
+  categories: Category[]
   defaultProductId?: string
+}
+
+type LineErrorField =
+  | 'productId'
+  | 'qty'
+  | 'numPacks'
+  | 'unitsPerPack'
+  | 'totalCost'
+  | 'sellingPrice'
+  | 'expiryDate'
+
+type LineErrors = Partial<Record<LineErrorField, string>>
+
+interface LineState {
+  key: string
+  productId: string
+  vendorId: string
+  isConsignment: boolean
+  supplierLotNumber: string
+  purchaseMode: 'unit' | 'pack'
+  qtyUnits: string
+  numPacks: string
+  unitsPerPack: string
+  totalCost: string
+  overrideSelling: boolean
+  sellingPrice: string
+  hasExpiry: boolean
+  expiryDate: string
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -40,6 +72,111 @@ function todayString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function makeKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return Math.random().toString(36).slice(2)
+}
+
+function emptyLine(productId = ''): LineState {
+  return {
+    key: makeKey(),
+    productId,
+    vendorId: '',
+    isConsignment: false,
+    supplierLotNumber: '',
+    purchaseMode: 'unit',
+    qtyUnits: '',
+    numPacks: '',
+    unitsPerPack: '',
+    totalCost: '',
+    overrideSelling: false,
+    sellingPrice: '',
+    hasExpiry: false,
+    expiryDate: '',
+  }
+}
+
+function lineTotalUnits(line: LineState): number {
+  if (line.purchaseMode === 'unit') {
+    const n = parseInt(line.qtyUnits, 10)
+    return isNaN(n) || n <= 0 ? 0 : n
+  }
+  const packs = parseInt(line.numPacks, 10)
+  const perPack = parseInt(line.unitsPerPack, 10)
+  if (isNaN(packs) || isNaN(perPack) || packs <= 0 || perPack <= 0) return 0
+  return packs * perPack
+}
+
+function lineCostPerUnit(line: LineState): number | null {
+  const cost = parseFloat(line.totalCost)
+  const units = lineTotalUnits(line)
+  if (isNaN(cost) || cost < 0 || units === 0) return null
+  return cost / units
+}
+
+function lineEffectiveSellingPrice(line: LineState, product: ProductWithStock | null): number | null {
+  if (line.overrideSelling && line.sellingPrice) {
+    const sp = parseFloat(line.sellingPrice)
+    return isNaN(sp) || sp <= 0 ? null : sp
+  }
+  if (product) {
+    const sp = parseFloat(product.selling_price as string)
+    return isNaN(sp) || sp <= 0 ? null : sp
+  }
+  return null
+}
+
+function lineGrossMargin(line: LineState, product: ProductWithStock | null): number | null {
+  const sp = lineEffectiveSellingPrice(line, product)
+  const cpu = lineCostPerUnit(line)
+  if (sp === null || cpu === null) return null
+  return ((sp - cpu) / sp) * 100
+}
+
+function marginColor(margin: number | null): string {
+  if (margin === null) return 'var(--text-secondary)'
+  if (margin < 0) return 'var(--danger)'
+  if (margin < 15) return 'var(--warning)'
+  return 'var(--positive)'
+}
+
+function validateLine(line: LineState): LineErrors {
+  const errs: LineErrors = {}
+  if (!line.productId) errs.productId = 'Please select a product.'
+  if (line.purchaseMode === 'unit') {
+    const n = parseInt(line.qtyUnits, 10)
+    if (!line.qtyUnits || isNaN(n) || n <= 0) errs.qty = 'Enter a valid quantity greater than zero.'
+  } else {
+    const packs = parseInt(line.numPacks, 10)
+    const perPack = parseInt(line.unitsPerPack, 10)
+    if (!line.numPacks || isNaN(packs) || packs <= 0) errs.numPacks = 'Enter a valid number of packs.'
+    if (!line.unitsPerPack || isNaN(perPack) || perPack <= 0) errs.unitsPerPack = 'Enter units per pack.'
+  }
+  const cost = parseFloat(line.totalCost)
+  if (!line.totalCost || isNaN(cost) || cost < 0) errs.totalCost = 'Enter a valid total cost (can be 0).'
+  if (line.overrideSelling) {
+    const sp = parseFloat(line.sellingPrice)
+    if (!line.sellingPrice || isNaN(sp) || sp <= 0) errs.sellingPrice = 'Enter a valid selling price.'
+  }
+  if (line.hasExpiry && !line.expiryDate) errs.expiryDate = 'Please select an expiry date.'
+  return errs
+}
+
+function lineToInput(line: LineState): IntakeLineInput {
+  return {
+    productId: line.productId,
+    vendorId: line.vendorId || null,
+    purchaseMode: line.purchaseMode,
+    qtyReceived: line.purchaseMode === 'unit' ? parseInt(line.qtyUnits, 10) : parseInt(line.numPacks, 10),
+    packSize: line.purchaseMode === 'pack' ? parseInt(line.unitsPerPack, 10) : 1,
+    totalPurchaseCost: parseFloat(line.totalCost),
+    sellingPriceOverride: line.overrideSelling && line.sellingPrice ? parseFloat(line.sellingPrice) : null,
+    expiryDate: line.hasExpiry && line.expiryDate ? new Date(line.expiryDate) : null,
+    supplierLotNumber: line.supplierLotNumber.trim() || null,
+    isConsignment: line.isConsignment,
+  }
+}
+
 // ─── SearchableSelect ────────────────────────────────────────────────────────
 
 interface SearchableSelectProps {
@@ -48,9 +185,20 @@ interface SearchableSelectProps {
   onChange: (id: string) => void
   placeholder: string
   emptyLabel?: string
+  /** If provided, shows a "+ Create new…" row at the bottom of the results. */
+  onCreateNew?: () => void
+  createNewLabel?: string
 }
 
-function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }: SearchableSelectProps) {
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyLabel,
+  onCreateNew,
+  createNewLabel = 'Create new…',
+}: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
 
@@ -139,6 +287,24 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
                 ))}
               </CommandGroup>
             )}
+            {onCreateNew && (
+              <CommandGroup>
+                <CommandItem
+                  value="__create_new__"
+                  onSelect={() => {
+                    setOpen(false)
+                    setSearch('')
+                    onCreateNew()
+                  }}
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  <span className="flex items-center justify-center w-4 h-4 shrink-0">
+                    <Plus size={13} />
+                  </span>
+                  <span className="flex-1 truncate font-medium">{createNewLabel}</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
@@ -170,24 +336,28 @@ function Field({ label, required, error, children }: {
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
-function Section({ number, title, children }: {
-  number: number
+function Section({ number, title, children, action }: {
+  number: number | string
   title: string
   children: React.ReactNode
+  action?: React.ReactNode
 }) {
   return (
     <div
       className="rounded-xl p-6 flex flex-col gap-5"
       style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
     >
-      <div className="flex items-center gap-3">
-        <span
-          className="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shrink-0"
-          style={{ background: 'var(--accent-primary-muted)', color: 'var(--accent-primary)' }}
-        >
-          {number}
-        </span>
-        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className="flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold shrink-0"
+            style={{ background: 'var(--accent-primary-muted)', color: 'var(--accent-primary)' }}
+          >
+            {number}
+          </span>
+          <h2 className="text-base font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{title}</h2>
+        </div>
+        {action}
       </div>
       {children}
     </div>
@@ -263,154 +433,449 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   )
 }
 
-// ─── Main Form ────────────────────────────────────────────────────────────────
+// ─── Intake Line Card ─────────────────────────────────────────────────────────
+// One product + one vendor + its own quantity/pricing/expiry — the atomic
+// unit a batch is built from. The intake form is one or more of these.
 
-export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormProps) {
-  const router = useRouter()
-  const { currency } = useCurrency()
+interface IntakeLineCardProps {
+  line: LineState
+  index: number
+  total: number
+  currency: string
+  products: ProductWithStock[]
+  vendors: VendorWithStats[]
+  errors: LineErrors
+  onUpdate: (patch: Partial<LineState>) => void
+  onRemove: () => void
+  onCreateProduct: () => void
+  onCreateVendor: () => void
+}
 
-  // Section 1
-  const [productId, setProductId] = React.useState(defaultProductId ?? '')
-  const [vendorId, setVendorId] = React.useState('')
-  const [isConsignment, setIsConsignment] = React.useState(false)
-  const [batchRef, setBatchRef] = React.useState('')
-  const [dateReceived, setDateReceived] = React.useState(todayString())
+function IntakeLineCard({
+  line,
+  index,
+  total,
+  currency,
+  products,
+  vendors,
+  errors,
+  onUpdate,
+  onRemove,
+  onCreateProduct,
+  onCreateVendor,
+}: IntakeLineCardProps) {
+  const selectedProduct = React.useMemo(
+    () => products.find((p) => p.id === line.productId) ?? null,
+    [products, line.productId],
+  )
 
-  // Section 2
-  const [purchaseMode, setPurchaseMode] = React.useState<'unit' | 'pack'>('unit')
-  const [qtyUnits, setQtyUnits] = React.useState('')
-  const [numPacks, setNumPacks] = React.useState('')
-  const [unitsPerPack, setUnitsPerPack] = React.useState('')
-  const [totalCost, setTotalCost] = React.useState('')
-  const [overrideSelling, setOverrideSelling] = React.useState(false)
-  const [sellingPrice, setSellingPrice] = React.useState('')
+  const productOptions = React.useMemo(
+    () => products.map((p) => ({ id: p.id, label: p.name, sub: p.sku })),
+    [products],
+  )
+  const vendorOptions = React.useMemo(
+    () => vendors.map((v) => ({ id: v.id, label: v.name, sub: v.type === 'consignment' ? 'Consignment' : 'Direct' })),
+    [vendors],
+  )
 
-  // Section 3
-  const [hasExpiry, setHasExpiry] = React.useState(false)
-  const [expiryDate, setExpiryDate] = React.useState('')
-  const [notes, setNotes] = React.useState('')
+  const totalUnits = lineTotalUnits(line)
+  const costPerUnit = lineCostPerUnit(line)
+  const grossMargin = lineGrossMargin(line, selectedProduct)
 
-  // Submission
-  const [submitting, setSubmitting] = React.useState(false)
-  const [errors, setErrors] = React.useState<Record<string, string>>({})
-
-  // ─── Auto-set consignment when vendor changes ─────────────────────────────
-
-  React.useEffect(() => {
+  function handleVendorChange(vendorId: string) {
     if (!vendorId) {
-      setIsConsignment(false)
+      onUpdate({ vendorId, isConsignment: false })
       return
     }
     const vendor = vendors.find((v) => v.id === vendorId)
-    if (vendor?.type === 'consignment') {
-      setIsConsignment(true)
-    }
-  }, [vendorId, vendors])
-
-  // ─── Derived calculations ─────────────────────────────────────────────────
-
-  const totalUnits = React.useMemo(() => {
-    if (purchaseMode === 'unit') {
-      const n = parseInt(qtyUnits, 10)
-      return isNaN(n) || n <= 0 ? 0 : n
-    }
-    const packs = parseInt(numPacks, 10)
-    const perPack = parseInt(unitsPerPack, 10)
-    if (isNaN(packs) || isNaN(perPack) || packs <= 0 || perPack <= 0) return 0
-    return packs * perPack
-  }, [purchaseMode, qtyUnits, numPacks, unitsPerPack])
-
-  const costPerUnit = React.useMemo(() => {
-    const cost = parseFloat(totalCost)
-    if (isNaN(cost) || cost < 0 || totalUnits === 0) return null
-    return cost / totalUnits
-  }, [totalCost, totalUnits])
-
-  const grossMargin = React.useMemo(() => {
-    if (!overrideSelling || !sellingPrice) return null
-    const sp = parseFloat(sellingPrice)
-    if (isNaN(sp) || sp <= 0 || costPerUnit === null) return null
-    return ((sp - costPerUnit) / sp) * 100
-  }, [overrideSelling, sellingPrice, costPerUnit])
-
-  function marginColor(): string {
-    if (grossMargin === null) return 'var(--text-secondary)'
-    if (grossMargin < 0) return 'var(--danger)'
-    if (grossMargin < 15) return 'var(--warning)'
-    return 'var(--positive)'
+    onUpdate({ vendorId, isConsignment: vendor?.type === 'consignment' ? true : line.isConsignment })
   }
 
-  // ─── Options for searchable selects ──────────────────────────────────────
+  return (
+    <Section
+      number={index + 1}
+      title={total > 1 ? `Item ${index + 1}` : 'What are you receiving?'}
+      action={
+        total > 1 ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Remove this item"
+            className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--bg-input)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
+          >
+            <X size={15} />
+          </button>
+        ) : undefined
+      }
+    >
+      {/* Product */}
+      <Field label="Product" required error={errors.productId}>
+        <div data-error={!!errors.productId}>
+          <SearchableSelect
+            options={productOptions}
+            value={line.productId}
+            onChange={(productId) => onUpdate({ productId })}
+            placeholder="Search products…"
+            onCreateNew={onCreateProduct}
+            createNewLabel="Create new product…"
+          />
+        </div>
+        {selectedProduct && (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Currently sells for{' '}
+            <span className="mono font-medium" style={{ color: 'var(--text-secondary)' }}>
+              {getCurrencySymbol(currency)}{fmt(selectedProduct.selling_price)}
+            </span>
+            {' '}— for reference while you fill in cost below.
+          </p>
+        )}
+      </Field>
 
-  const productOptions = products.map((p) => ({
-    id: p.id,
-    label: p.name,
-    sub: p.sku,
-  }))
+      {/* Vendor */}
+      <Field label="Vendor">
+        <SearchableSelect
+          options={vendorOptions}
+          value={line.vendorId}
+          onChange={handleVendorChange}
+          placeholder="Select a vendor…"
+          emptyLabel="(No vendor / Open market)"
+          onCreateNew={onCreateVendor}
+          createNewLabel="Create new vendor…"
+        />
+      </Field>
 
-  const vendorOptions = vendors.map((v) => ({
-    id: v.id,
-    label: v.name,
-    sub: v.type === 'consignment' ? 'Consignment' : 'Direct',
-  }))
+      {/* Consignment */}
+      <Toggle
+        checked={line.isConsignment}
+        onChange={(v) => onUpdate({ isConsignment: v })}
+        label="Mark as consignment stock"
+      />
 
-  // ─── Validation ───────────────────────────────────────────────────────────
+      {/* Supplier lot number */}
+      <Field label="Supplier Lot Number (optional)">
+        <Input
+          type="text"
+          value={line.supplierLotNumber}
+          onChange={(e) => onUpdate({ supplierLotNumber: e.target.value })}
+          placeholder="Only if the delivery has one"
+          maxLength={100}
+        />
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Your internal batch reference is generated automatically — this
+          is just for the supplier&apos;s own code, if the delivery has one.
+        </p>
+      </Field>
 
-  function validate(): Record<string, string> {
-    const errs: Record<string, string> = {}
-    if (!productId) errs.productId = 'Please select a product.'
-    if (!dateReceived) errs.dateReceived = 'Date received is required.'
-    if (purchaseMode === 'unit') {
-      const n = parseInt(qtyUnits, 10)
-      if (!qtyUnits || isNaN(n) || n <= 0) errs.qty = 'Enter a valid quantity greater than zero.'
-    } else {
-      const packs = parseInt(numPacks, 10)
-      const perPack = parseInt(unitsPerPack, 10)
-      if (!numPacks || isNaN(packs) || packs <= 0) errs.numPacks = 'Enter a valid number of packs.'
-      if (!unitsPerPack || isNaN(perPack) || perPack <= 0) errs.unitsPerPack = 'Enter units per pack.'
+      {/* Purchase mode */}
+      <Field label="Purchase Mode" required>
+        <div className="flex gap-3">
+          {(['unit', 'pack'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onUpdate({ purchaseMode: mode })}
+              className="flex-1 flex flex-col items-start gap-0.5 rounded-lg px-4 py-3 border text-sm font-medium transition-all"
+              style={{
+                background: line.purchaseMode === mode ? 'var(--accent-primary-muted)' : 'var(--bg-input)',
+                border: `1px solid ${line.purchaseMode === mode ? 'var(--accent-primary)' : 'var(--border)'}`,
+                color: line.purchaseMode === mode ? 'var(--accent-primary)' : 'var(--text-secondary)',
+              }}
+            >
+              {mode === 'unit' ? 'By Unit' : 'By Pack'}
+              <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
+                {mode === 'unit' ? 'Each item counted individually' : 'Carton, dozen, bag, etc.'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {/* Qty inputs */}
+      {line.purchaseMode === 'unit' ? (
+        <Field label="Quantity (units)" required error={errors.qty}>
+          <div data-error={!!errors.qty}>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={line.qtyUnits}
+              onChange={(e) => onUpdate({ qtyUnits: e.target.value })}
+              placeholder="e.g. 100"
+            />
+          </div>
+        </Field>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Number of Packs" required error={errors.numPacks}>
+            <div data-error={!!errors.numPacks}>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={line.numPacks}
+                onChange={(e) => onUpdate({ numPacks: e.target.value })}
+                placeholder="e.g. 10"
+              />
+            </div>
+          </Field>
+          <Field label="Units Per Pack" required error={errors.unitsPerPack}>
+            <div data-error={!!errors.unitsPerPack}>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={line.unitsPerPack}
+                onChange={(e) => onUpdate({ unitsPerPack: e.target.value })}
+                placeholder="e.g. 12"
+              />
+            </div>
+          </Field>
+        </div>
+      )}
+
+      {/* Total cost */}
+      <Field label={`Total Purchase Cost (${getCurrencySymbol(currency)})`} required error={errors.totalCost}>
+        <div data-error={!!errors.totalCost} className="relative">
+          <span
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {getCurrencySymbol(currency)}
+          </span>
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={line.totalCost}
+            onChange={(e) => onUpdate({ totalCost: e.target.value })}
+            placeholder="0.00"
+            className="pl-7"
+          />
+        </div>
+      </Field>
+
+      {/* Calculated: cost per unit */}
+      {costPerUnit !== null && totalUnits > 0 && (
+        <div className="flex flex-col gap-1">
+          <div
+            className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
+            style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
+          >
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Cost per unit
+              {line.purchaseMode === 'pack' && totalUnits > 0 && (
+                <span style={{ color: 'var(--text-muted)' }}> ({totalUnits} units total)</span>
+              )}
+            </span>
+            <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
+              {getCurrencySymbol(currency)}{fmt(costPerUnit)}
+            </span>
+          </div>
+          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
+            What you&apos;re paying per unit — compare it against the selling price above to see your margin.
+          </p>
+        </div>
+      )}
+
+      {/* Override selling price */}
+      <Toggle
+        checked={line.overrideSelling}
+        onChange={(v) => onUpdate({ overrideSelling: v })}
+        label="Override selling price for this batch"
+      />
+
+      {line.overrideSelling && (
+        <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
+          <div data-error={!!errors.sellingPrice} className="relative">
+            <span
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {getCurrencySymbol(currency)}
+            </span>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={line.sellingPrice}
+              onChange={(e) => onUpdate({ sellingPrice: e.target.value })}
+              placeholder="0.00"
+              className="pl-7"
+            />
+          </div>
+        </Field>
+      )}
+
+      {grossMargin !== null && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
+          style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+        >
+          <span style={{ color: 'var(--text-secondary)' }}>
+            Gross Margin
+            {!line.overrideSelling && (
+              <span style={{ color: 'var(--text-muted)' }}> (at current selling price)</span>
+            )}
+          </span>
+          <span className="font-semibold" style={{ color: marginColor(grossMargin) }}>
+            {grossMargin.toFixed(1)}%
+            {grossMargin < 0 && ' — selling below cost'}
+            {grossMargin >= 0 && grossMargin < 15 && ' — low margin'}
+            {grossMargin >= 15 && ' — healthy'}
+          </span>
+        </div>
+      )}
+
+      {/* Expiry */}
+      <Toggle
+        checked={line.hasExpiry}
+        onChange={(v) => onUpdate({ hasExpiry: v })}
+        label="This item has an expiry date"
+      />
+
+      {line.hasExpiry && (
+        <Field label="Expiry Date" required error={errors.expiryDate}>
+          <div data-error={!!errors.expiryDate}>
+            <Input
+              type="date"
+              value={line.expiryDate}
+              onChange={(e) => onUpdate({ expiryDate: e.target.value })}
+              min={todayString()}
+            />
+          </div>
+        </Field>
+      )}
+    </Section>
+  )
+}
+
+// ─── Main Form ────────────────────────────────────────────────────────────────
+
+export function IntakeForm({ products, vendors, categories, defaultProductId }: IntakeFormProps) {
+  const router = useRouter()
+  const { currency } = useCurrency()
+
+  // Local copies of products/vendors so a newly created one can be merged in
+  // and auto-selected immediately, without waiting for the page to refetch.
+  const [localProducts, setLocalProducts] = React.useState<ProductWithStock[]>(products)
+  const [localVendors, setLocalVendors] = React.useState<VendorWithStats[]>(vendors)
+  React.useEffect(() => { setLocalProducts(products) }, [products])
+  React.useEffect(() => { setLocalVendors(vendors) }, [vendors])
+
+  // Which line triggered the "Create new product/vendor" panel — so the
+  // newly created record gets applied to that specific line, not just the
+  // first one.
+  const [activeLineKey, setActiveLineKey] = React.useState<string | null>(null)
+  const [productPanelOpen, setProductPanelOpen] = React.useState(false)
+  const [vendorPanelOpen, setVendorPanelOpen] = React.useState(false)
+
+  // Shared across the whole intake session — one restock trip is normally
+  // one date, and "notes about this delivery" apply to everything in it.
+  const [dateReceived, setDateReceived] = React.useState(todayString())
+  const [sessionNotes, setSessionNotes] = React.useState('')
+  const [dateError, setDateError] = React.useState<string | undefined>()
+
+  // One or more product+vendor lines. A single-line submission behaves
+  // exactly as intake always has; multiple lines share one intake session.
+  const [lines, setLines] = React.useState<LineState[]>([emptyLine(defaultProductId)])
+  const [lineErrors, setLineErrors] = React.useState<Record<string, LineErrors>>({})
+
+  const [submitting, setSubmitting] = React.useState(false)
+
+  // ─── Line management ────────────────────────────────────────────────────────
+
+  function updateLine(key: string, patch: Partial<LineState>) {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, emptyLine()])
+  }
+
+  function removeLine(key: string) {
+    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.key !== key)))
+    setLineErrors((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  // ─── Inline creation handlers ──────────────────────────────────────────────
+
+  function openCreateProduct(lineKey: string) {
+    setActiveLineKey(lineKey)
+    setProductPanelOpen(true)
+  }
+
+  function openCreateVendor(lineKey: string) {
+    setActiveLineKey(lineKey)
+    setVendorPanelOpen(true)
+  }
+
+  function handleProductCreated(product: Product) {
+    const withDefaults: ProductWithStock = {
+      ...product,
+      category_name: categories.find((c) => c.id === product.category_id)?.name ?? null,
+      current_stock: 0, // brand new — no batches yet
     }
-    const cost = parseFloat(totalCost)
-    if (!totalCost || isNaN(cost) || cost < 0) errs.totalCost = 'Enter a valid total cost (can be 0).'
-    if (overrideSelling) {
-      const sp = parseFloat(sellingPrice)
-      if (!sellingPrice || isNaN(sp) || sp <= 0) errs.sellingPrice = 'Enter a valid selling price.'
+    setLocalProducts((prev) => [...prev, withDefaults])
+    if (activeLineKey) updateLine(activeLineKey, { productId: product.id })
+  }
+
+  function handleVendorCreated(vendor: Vendor) {
+    const withDefaults: VendorWithStats = {
+      ...vendor,
+      batch_count: 0,
+      outstanding_qty: 0,
     }
-    if (hasExpiry && !expiryDate) errs.expiryDate = 'Please select an expiry date.'
-    return errs
+    setLocalVendors((prev) => [...prev, withDefaults])
+    if (activeLineKey) {
+      updateLine(activeLineKey, {
+        vendorId: vendor.id,
+        isConsignment: vendor.type === 'consignment',
+      })
+    }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const errs = validate()
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs)
-      // Scroll to first error
+
+    const nextDateError = !dateReceived ? 'Date received is required.' : undefined
+    const nextLineErrors: Record<string, LineErrors> = {}
+    let hasErrors = !!nextDateError
+
+    for (const line of lines) {
+      const errs = validateLine(line)
+      if (Object.keys(errs).length > 0) {
+        nextLineErrors[line.key] = errs
+        hasErrors = true
+      }
+    }
+
+    setDateError(nextDateError)
+    setLineErrors(nextLineErrors)
+
+    if (hasErrors) {
       setTimeout(() => {
         const el = document.querySelector('[data-error="true"]')
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 50)
       return
     }
-    setErrors({})
+
     setSubmitting(true)
 
-    const selectedProduct = products.find((p) => p.id === productId)
-
     try {
-      const result = await createBatch({
-        productId,
-        vendorId: vendorId || null,
-        purchaseMode,
-        qtyReceived: purchaseMode === 'unit' ? parseInt(qtyUnits, 10) : parseInt(numPacks, 10),
-        packSize: purchaseMode === 'pack' ? parseInt(unitsPerPack, 10) : 1,
-        totalPurchaseCost: parseFloat(totalCost),
-        sellingPriceOverride: overrideSelling && sellingPrice ? parseFloat(sellingPrice) : null,
-        expiryDate: hasExpiry && expiryDate ? new Date(expiryDate) : null,
-        batchRef: batchRef.trim() || null,
-        notes: notes.trim() || null,
-        isConsignment,
+      const result = await createBatchSession({
+        receivedAt: new Date(dateReceived),
+        notes: sessionNotes.trim() || null,
+        lines: lines.map(lineToInput),
       })
 
       if (!result.success) {
@@ -418,9 +883,19 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         return
       }
 
-      const units = totalUnits
-      const name = selectedProduct?.name ?? 'product'
-      toast.success(`Batch recorded. ${units} unit${units !== 1 ? 's' : ''} of ${name} added to stock.`)
+      if (lines.length === 1) {
+        const units = lineTotalUnits(lines[0])
+        const name = localProducts.find((p) => p.id === lines[0].productId)?.name ?? 'product'
+        toast.success(`Batch recorded. ${units} unit${units !== 1 ? 's' : ''} of ${name} added to stock.`)
+      } else {
+        const totalUnits = lines.reduce((sum, l) => sum + lineTotalUnits(l), 0)
+        const vendorCount = new Set(lines.map((l) => l.vendorId).filter(Boolean)).size
+        const vendorPart = vendorCount > 1 ? ` across ${vendorCount} vendors` : ''
+        toast.success(
+          `${lines.length} batches recorded. ${totalUnits} units${vendorPart} added to stock.`,
+        )
+      }
+
       router.push('/intake')
     } finally {
       setSubmitting(false)
@@ -430,6 +905,7 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
+    <>
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6 max-w-2xl mx-auto">
 
       {/* Back link */}
@@ -444,242 +920,68 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         Back to Intake Log
       </Link>
 
-      {/* ── Section 1 ── */}
-      <Section number={1} title="What are you receiving?">
-        {/* Product */}
-        <Field label="Product" required error={errors.productId}>
-          <div data-error={!!errors.productId}>
-            <SearchableSelect
-              options={productOptions}
-              value={productId}
-              onChange={setProductId}
-              placeholder="Search products…"
-            />
-          </div>
-        </Field>
-
-        {/* Vendor */}
-        <Field label="Vendor" error={errors.vendorId}>
-          <SearchableSelect
-            options={vendorOptions}
-            value={vendorId}
-            onChange={setVendorId}
-            placeholder="Select a vendor…"
-            emptyLabel="(No vendor / Open market)"
-          />
-        </Field>
-
-        {/* Consignment */}
-        <Toggle
-          checked={isConsignment}
-          onChange={setIsConsignment}
-          label="Mark as consignment stock"
-        />
-
-        {/* Batch ref + Date in a 2-col grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Batch / Lot Reference">
+      {/* ── Intake details (shared across every line) ── */}
+      <Section number="•" title="When did this arrive?">
+        <Field label="Date Received" required error={dateError}>
+          <div data-error={!!dateError}>
             <Input
-              type="text"
-              value={batchRef}
-              onChange={(e) => setBatchRef(e.target.value)}
-              placeholder="Supplier batch or lot number"
-              maxLength={100}
-            />
-          </Field>
-          <Field label="Date Received" required error={errors.dateReceived}>
-            <div data-error={!!errors.dateReceived}>
-              <Input
-                type="date"
-                value={dateReceived}
-                onChange={(e) => setDateReceived(e.target.value)}
-                max={todayString()}
-              />
-            </div>
-          </Field>
-        </div>
-      </Section>
-
-      {/* ── Section 2 ── */}
-      <Section number={2} title="Quantity & Pricing">
-        {/* Purchase mode */}
-        <Field label="Purchase Mode" required>
-          <div className="flex gap-3">
-            {(['unit', 'pack'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setPurchaseMode(mode)}
-                className="flex-1 flex flex-col items-start gap-0.5 rounded-lg px-4 py-3 border text-sm font-medium transition-all"
-                style={{
-                  background: purchaseMode === mode ? 'var(--accent-primary-muted)' : 'var(--bg-input)',
-                  border: `1px solid ${purchaseMode === mode ? 'var(--accent-primary)' : 'var(--border)'}`,
-                  color: purchaseMode === mode ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                }}
-              >
-                {mode === 'unit' ? 'By Unit' : 'By Pack'}
-                <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
-                  {mode === 'unit' ? 'Each item counted individually' : 'Carton, dozen, bag, etc.'}
-                </span>
-              </button>
-            ))}
-          </div>
-        </Field>
-
-        {/* Qty inputs */}
-        {purchaseMode === 'unit' ? (
-          <Field label="Quantity (units)" required error={errors.qty}>
-            <div data-error={!!errors.qty}>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                value={qtyUnits}
-                onChange={(e) => setQtyUnits(e.target.value)}
-                placeholder="e.g. 100"
-              />
-            </div>
-          </Field>
-        ) : (
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Number of Packs" required error={errors.numPacks}>
-              <div data-error={!!errors.numPacks}>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={numPacks}
-                  onChange={(e) => setNumPacks(e.target.value)}
-                  placeholder="e.g. 10"
-                />
-              </div>
-            </Field>
-            <Field label="Units Per Pack" required error={errors.unitsPerPack}>
-              <div data-error={!!errors.unitsPerPack}>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={unitsPerPack}
-                  onChange={(e) => setUnitsPerPack(e.target.value)}
-                  placeholder="e.g. 12"
-                />
-              </div>
-            </Field>
-          </div>
-        )}
-
-        {/* Total cost */}
-        <Field label={`Total Purchase Cost (${getCurrencySymbol(currency)})`} required error={errors.totalCost}>
-          <div data-error={!!errors.totalCost} className="relative">
-            <span
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {getCurrencySymbol(currency)}
-            </span>
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={totalCost}
-              onChange={(e) => setTotalCost(e.target.value)}
-              placeholder="0.00"
-              className="pl-7"
+              type="date"
+              value={dateReceived}
+              onChange={(e) => setDateReceived(e.target.value)}
+              max={todayString()}
             />
           </div>
         </Field>
-
-        {/* Calculated: cost per unit */}
-        {costPerUnit !== null && totalUnits > 0 && (
-          <div
-            className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-            style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
-          >
-            <span style={{ color: 'var(--text-secondary)' }}>
-              Cost per unit
-              {purchaseMode === 'pack' && totalUnits > 0 && (
-                <span style={{ color: 'var(--text-muted)' }}> ({totalUnits} units total)</span>
-              )}
-            </span>
-            <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
-              {getCurrencySymbol(currency)}{fmt(costPerUnit)}
-            </span>
-          </div>
-        )}
-
-        {/* Override selling price */}
-        <Toggle
-          checked={overrideSelling}
-          onChange={setOverrideSelling}
-          label="Override selling price for this batch"
-        />
-
-        {overrideSelling && (
-          <>
-            <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
-              <div data-error={!!errors.sellingPrice} className="relative">
-                <span
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {getCurrencySymbol(currency)}
-                </span>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={sellingPrice}
-                  onChange={(e) => setSellingPrice(e.target.value)}
-                  placeholder="0.00"
-                  className="pl-7"
-                />
-              </div>
-            </Field>
-
-            {grossMargin !== null && (
-              <div
-                className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
-              >
-                <span style={{ color: 'var(--text-secondary)' }}>Gross Margin</span>
-                <span className="font-semibold" style={{ color: marginColor() }}>
-                  {grossMargin.toFixed(1)}%
-                  {grossMargin < 0 && ' — selling below cost'}
-                  {grossMargin >= 0 && grossMargin < 15 && ' — low margin'}
-                  {grossMargin >= 15 && ' — healthy'}
-                </span>
-              </div>
-            )}
-          </>
+        {lines.length > 1 && (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Applies to every item below — for one restock trip received on the same day.
+          </p>
         )}
       </Section>
 
-      {/* ── Section 3 ── */}
-      <Section number={3} title="Expiry & Notes">
-        <Toggle
-          checked={hasExpiry}
-          onChange={setHasExpiry}
-          label="This batch has an expiry date"
+      {/* ── One card per product/vendor line ── */}
+      {lines.map((line, index) => (
+        <IntakeLineCard
+          key={line.key}
+          line={line}
+          index={index}
+          total={lines.length}
+          currency={currency}
+          products={localProducts}
+          vendors={localVendors}
+          errors={lineErrors[line.key] ?? {}}
+          onUpdate={(patch) => updateLine(line.key, patch)}
+          onRemove={() => removeLine(line.key)}
+          onCreateProduct={() => openCreateProduct(line.key)}
+          onCreateVendor={() => openCreateVendor(line.key)}
         />
+      ))}
 
-        {hasExpiry && (
-          <Field label="Expiry Date" required error={errors.expiryDate}>
-            <div data-error={!!errors.expiryDate}>
-              <Input
-                type="date"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-                min={todayString()}
-              />
-            </div>
-          </Field>
-        )}
+      {/* Add another line */}
+      <button
+        type="button"
+        onClick={addLine}
+        className="flex items-center justify-center gap-2 h-11 rounded-xl border border-dashed text-sm font-medium transition-colors"
+        style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = 'var(--accent-primary)'
+          e.currentTarget.style.color = 'var(--accent-primary)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border)'
+          e.currentTarget.style.color = 'var(--text-secondary)'
+        }}
+      >
+        <Plus size={15} />
+        Add Another Product
+      </button>
 
-        <Field label="Notes">
+      {/* Session notes */}
+      <Section number="•" title="Notes">
+        <Field label={lines.length > 1 ? 'Notes about this delivery' : 'Notes'}>
           <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            value={sessionNotes}
+            onChange={(e) => setSessionNotes(e.target.value)}
             placeholder="Any additional notes about this shipment…"
             maxLength={500}
           />
@@ -718,9 +1020,26 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--accent-primary)')}
         >
           {submitting && <Loader2 size={15} className="animate-spin" />}
-          {submitting ? 'Recording…' : 'Record Stock Intake'}
+          {submitting
+            ? 'Recording…'
+            : lines.length > 1
+              ? `Record ${lines.length} Batches`
+              : 'Record Stock Intake'}
         </button>
       </div>
     </form>
+
+    <ProductSlideOver
+      open={productPanelOpen}
+      onOpenChange={setProductPanelOpen}
+      categories={categories}
+      onCreated={handleProductCreated}
+    />
+    <VendorSlideOver
+      open={vendorPanelOpen}
+      onOpenChange={setVendorPanelOpen}
+      onCreated={handleVendorCreated}
+    />
+    </>
   )
 }

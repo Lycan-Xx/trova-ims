@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { getProducts } from '@/app/actions/products'
-import { createSale } from '@/app/actions/sales'
+import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
 import type { ProductWithStock } from '@/app/actions/products'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -47,6 +47,18 @@ export default function NewSalePage() {
 
   // Cart state
   const [cart, setCart] = React.useState<CartEntry[]>([])
+
+  // Effective per-unit prices, keyed by product id. This is the price that
+  // will actually be charged (the next FEFO batch's override, if any) — it
+  // can differ from product.selling_price, so it's what the cart and search
+  // dropdown must display to avoid showing a total that doesn't match the
+  // receipt. Falls back to product.selling_price until it loads.
+  const [effectivePrices, setEffectivePrices] = React.useState<Record<string, number>>({})
+
+  function getPrice(product: ProductWithStock): number {
+    const loaded = effectivePrices[product.id]
+    return loaded !== undefined ? loaded : parseFloat(product.selling_price as string)
+  }
 
   // Payment state
   const [paymentMethod, setPaymentMethod] = React.useState<PaymentMethod>('cash')
@@ -95,6 +107,21 @@ export default function NewSalePage() {
     }, 200)
   }, [searchQuery])
 
+  // Keep effective prices in sync with whatever's currently visible: the
+  // search dropdown and the cart. Re-fetches on every change to those sets
+  // so a price never goes stale mid-checkout.
+  const cartIds = cart.map((e) => e.product.id).join(',')
+  const searchIds = searchResults.map((p) => p.id).join(',')
+  React.useEffect(() => {
+    const ids = Array.from(new Set([...cartIds.split(','), ...searchIds.split(',')].filter(Boolean)))
+    if (ids.length === 0) return
+    getEffectiveUnitPrices(ids).then((res) => {
+      if (res.success) {
+        setEffectivePrices((prev) => ({ ...prev, ...res.data }))
+      }
+    })
+  }, [cartIds, searchIds])
+
   // ── Cart helpers ──────────────────────────────────────────────────────────────
 
   function addToCart(product: ProductWithStock) {
@@ -136,7 +163,7 @@ export default function NewSalePage() {
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const cartTotal = cart.reduce(
-    (sum, e) => sum + e.qty * parseFloat(e.product.selling_price as string),
+    (sum, e) => sum + e.qty * getPrice(e.product),
     0,
   )
 
@@ -306,7 +333,7 @@ export default function NewSalePage() {
                       </div>
                       <div className="flex flex-col items-end gap-0.5 ml-4 shrink-0">
                         <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                          {getCurrencySymbol(currency)}{fmt(parseFloat(product.selling_price as string))}
+                          {getCurrencySymbol(currency)}{fmt(getPrice(product))}
                         </span>
                         {outOfStock ? (
                           <span className="text-xs" style={{ color: 'var(--danger)' }}>Out of stock</span>
@@ -369,7 +396,7 @@ export default function NewSalePage() {
               </div>
 
               {cart.map((entry) => {
-                const lineTotal = entry.qty * parseFloat(entry.product.selling_price as string)
+                const lineTotal = entry.qty * getPrice(entry.product)
                 return (
                   <div key={entry.product.id}>
                     <div
@@ -409,7 +436,7 @@ export default function NewSalePage() {
 
                       {/* Unit price */}
                       <p className="text-sm text-right" style={{ color: 'var(--text-secondary)' }}>
-                        {getCurrencySymbol(currency)}{fmt(parseFloat(entry.product.selling_price as string))}
+                        {getCurrencySymbol(currency)}{fmt(getPrice(entry.product))}
                       </p>
 
                       {/* Line total */}
@@ -497,14 +524,15 @@ export default function NewSalePage() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {cart.map((entry) => {
-                const lineTotal = entry.qty * parseFloat(entry.product.selling_price as string)
+                const unitPrice = getPrice(entry.product)
+                const lineTotal = entry.qty * unitPrice
                 return (
                   <div key={entry.product.id} className="flex items-center justify-between gap-3">
                     <span className="text-xs truncate min-w-0" style={{ color: 'var(--text-secondary)' }}>
                       {entry.product.name}
                     </span>
                     <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {entry.qty} × {getCurrencySymbol(currency)}{fmt(parseFloat(entry.product.selling_price as string))}
+                      {entry.qty} × {getCurrencySymbol(currency)}{fmt(unitPrice)}
                     </span>
                     <span className="text-xs font-medium whitespace-nowrap shrink-0" style={{ color: 'var(--text-primary)' }}>
                       {getCurrencySymbol(currency)}{fmt(lineTotal)}

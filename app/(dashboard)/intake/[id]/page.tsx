@@ -175,6 +175,9 @@ export default async function IntakeDetailPage({
           <InfoRow label="Vendor" value={vendor ? vendor.name : '—'} />
           <InfoRow label="Pack Size" value={<span className="flex items-center gap-1.5"><Layers size={13} />{batch.pack_size} {product.unit}{batch.pack_size > 1 ? 's' : ''} per pack</span>} />
           <InfoRow label="Batch Reference" value={<span className="flex items-center gap-1.5"><Hash size={13} />{batch.batch_ref ?? '—'}</span>} />
+          {batch.supplier_lot_number && (
+            <InfoRow label="Supplier Lot Number" value={batch.supplier_lot_number} />
+          )}
           <InfoRow label="Expiry Date" value={
             <span style={{ color: isExpired ? 'var(--danger)' : isExpiringSoon ? 'var(--warning)' : 'inherit' }}>
               {fmtDate(batch.expiry_date)}
