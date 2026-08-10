@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS batches (
   vendor_id               UUID REFERENCES vendors(id) ON DELETE SET NULL,
   batch_ref               TEXT,
   supplier_lot_number     TEXT,
+  intake_session_id       UUID,
   qty_received            INTEGER NOT NULL,
   qty_remaining           INTEGER NOT NULL,
   pack_size               INTEGER NOT NULL DEFAULT 1,
@@ -134,6 +135,9 @@ CREATE TABLE IF NOT EXISTS batches (
 CREATE INDEX IF NOT EXISTS idx_batches_store_id ON batches(store_id);
 CREATE INDEX IF NOT EXISTS idx_batches_product_id ON batches(product_id);
 CREATE INDEX IF NOT EXISTS idx_batches_vendor_id ON batches(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_batches_intake_session
+  ON batches(store_id, intake_session_id)
+  WHERE intake_session_id IS NOT NULL;
 
 -- Sales: Transaction records
 CREATE TABLE IF NOT EXISTS sales (
