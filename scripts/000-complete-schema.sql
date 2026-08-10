@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS batches (
   product_id              UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   vendor_id               UUID REFERENCES vendors(id) ON DELETE SET NULL,
   batch_ref               TEXT,
+  supplier_lot_number     TEXT,
   qty_received            INTEGER NOT NULL,
   qty_remaining           INTEGER NOT NULL,
   pack_size               INTEGER NOT NULL DEFAULT 1,

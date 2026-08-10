@@ -256,6 +256,41 @@ export async function getProducts(
   }
 }
 
+// ─── getAllActiveProducts ───────────────────────────────────────────────────
+//
+// getProducts() is paginated (PAGE_SIZE = 20) for the Products page's table
+// view. That's the wrong shape for pickers like the Stock Intake form's
+// product select — it silently truncated the dropdown to the 20 most
+// recently created products, hiding every older product entirely once a
+// store passed 20 SKUs. This returns the full active catalog, unpaginated,
+// for use anywhere a complete list is needed instead of a page of it.
+
+export async function getAllActiveProducts(): Promise<
+  { success: true; data: ProductWithStock[] } | { success: false; error: string }
+> {
+  try {
+    const user = await requireStoreAccess()
+
+    const result = await query(
+      `SELECT
+        p.*,
+        c.name AS category_name,
+        COALESCE(SUM(b.qty_remaining), 0)::int AS current_stock
+      FROM products p
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN batches b ON b.product_id = p.id
+      WHERE p.store_id = $1 AND p.is_active = true
+      GROUP BY p.id, c.name
+      ORDER BY p.name ASC`,
+      [user.store_id],
+    )
+
+    return { success: true, data: result.rows as ProductWithStock[] }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
 // ─── getProductById ───────────────────────────────────────────────────────────
 
 export async function getProductById(

@@ -27,7 +27,7 @@ import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { createProduct, updateProduct } from '@/app/actions/products'
 import type { ProductWithStock } from '@/app/actions/products'
-import type { Category, UnitType } from '@/lib/db/schema'
+import type { Category, Product, UnitType } from '@/lib/db/schema'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +37,12 @@ interface ProductSlideOverProps {
   categories: Category[]
   /** If provided, panel opens in edit mode pre-populated with this product */
   product?: ProductWithStock | null
+  /**
+   * Called right after a new product is successfully created (not on edit).
+   * Lets an embedding form — e.g. Stock Intake — select the new product
+   * immediately, without waiting for router.refresh() to re-fetch the page.
+   */
+  onCreated?: (product: Product) => void
 }
 
 interface FormErrors {
@@ -87,6 +93,7 @@ export function ProductSlideOver({
   onOpenChange,
   categories,
   product,
+  onCreated,
 }: ProductSlideOverProps) {
   const router = useRouter()
   const { currency } = useCurrency()
@@ -146,7 +153,7 @@ export function ProductSlideOver({
 
   // ─── Submit ──────────────────────────────────────────────────────────────────
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent, keepOpen = false) {
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
@@ -168,16 +175,46 @@ export function ProductSlideOver({
           return
         }
         toast.success('Product updated.')
-      } else {
-        const result = await createProduct(payload)
-        if (!result.success) {
-          toast.error(result.error)
-          return
-        }
-        toast.success(`Product added. SKU: ${result.data.sku}`)
+        onOpenChange(false)
+        router.refresh()
+        return
       }
-      onOpenChange(false)
+
+      const result = await createProduct(payload)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+
+      if (onCreated) {
+        // Embedded usage (e.g. Stock Intake form) — let the caller react
+        // immediately instead of waiting on a full page refresh.
+        onCreated(result.data)
+        toast.success(`Product added. SKU: ${result.data.sku}`)
+      } else {
+        // Standalone usage (Products page) — nudge toward stocking it,
+        // since a brand-new product has zero stock and can't be sold yet.
+        toast.success(`Product added. SKU: ${result.data.sku}`, {
+          action: {
+            label: 'Record stock intake',
+            onClick: () => router.push(`/intake/new?productId=${result.data.id}`),
+          },
+        })
+      }
+
       router.refresh()
+
+      if (keepOpen) {
+        // Save & Add Another — reset the form but keep the panel open and
+        // the category selected, since bulk entry is usually similar items.
+        setName('')
+        setSellingPrice('')
+        setReorderLevel('10')
+        setDescription('')
+        setErrors({})
+      } else {
+        onOpenChange(false)
+      }
     } finally {
       setLoading(false)
     }
@@ -296,6 +333,9 @@ export function ProductSlideOver({
                   className={inputClass}
                   style={errors.reorderLevel ? { borderColor: 'var(--danger)' } : undefined}
                 />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  You&apos;ll get a low-stock alert once quantity on hand drops to this number or below.
+                </p>
               </Field>
 
               {/* Description */}
@@ -336,6 +376,17 @@ export function ProductSlideOver({
                 {loading && <Loader2 size={15} className="animate-spin" />}
                 {loading ? 'Saving…' : 'Save Product'}
               </button>
+              {!isEditing && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full h-9 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-input"
+                  onClick={(e) => handleSubmit(e as unknown as React.FormEvent, true)}
+                  disabled={loading}
+                >
+                  Save &amp; Add Another
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"

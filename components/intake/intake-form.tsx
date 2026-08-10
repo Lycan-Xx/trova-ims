@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Check, ChevronsUpDown, ChevronLeft, Loader2 } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, Loader2, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -17,14 +17,18 @@ import {
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { createBatch } from '@/app/actions/batches'
+import { ProductSlideOver } from '@/components/products/product-slide-over'
+import { VendorSlideOver } from '@/components/vendors/vendor-slide-over'
 import type { VendorWithStats } from '@/app/actions/vendors'
 import type { ProductWithStock } from '@/app/actions/products'
+import type { Category, Product, Vendor } from '@/lib/db/schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface IntakeFormProps {
   products: ProductWithStock[]
   vendors: VendorWithStats[]
+  categories: Category[]
   defaultProductId?: string
 }
 
@@ -48,9 +52,20 @@ interface SearchableSelectProps {
   onChange: (id: string) => void
   placeholder: string
   emptyLabel?: string
+  /** If provided, shows a "+ Create new…" row at the bottom of the results. */
+  onCreateNew?: () => void
+  createNewLabel?: string
 }
 
-function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }: SearchableSelectProps) {
+function SearchableSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+  emptyLabel,
+  onCreateNew,
+  createNewLabel = 'Create new…',
+}: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState('')
 
@@ -137,6 +152,24 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
                     )}
                   </CommandItem>
                 ))}
+              </CommandGroup>
+            )}
+            {onCreateNew && (
+              <CommandGroup>
+                <CommandItem
+                  value="__create_new__"
+                  onSelect={() => {
+                    setOpen(false)
+                    setSearch('')
+                    onCreateNew()
+                  }}
+                  style={{ color: 'var(--accent-primary)' }}
+                >
+                  <span className="flex items-center justify-center w-4 h-4 shrink-0">
+                    <Plus size={13} />
+                  </span>
+                  <span className="flex-1 truncate font-medium">{createNewLabel}</span>
+                </CommandItem>
               </CommandGroup>
             )}
           </CommandList>
@@ -265,15 +298,25 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
 
 // ─── Main Form ────────────────────────────────────────────────────────────────
 
-export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormProps) {
+export function IntakeForm({ products, vendors, categories, defaultProductId }: IntakeFormProps) {
   const router = useRouter()
   const { currency } = useCurrency()
+
+  // Local copies of products/vendors so a newly created one can be merged in
+  // and auto-selected immediately, without waiting for the page to refetch.
+  const [localProducts, setLocalProducts] = React.useState<ProductWithStock[]>(products)
+  const [localVendors, setLocalVendors] = React.useState<VendorWithStats[]>(vendors)
+  React.useEffect(() => { setLocalProducts(products) }, [products])
+  React.useEffect(() => { setLocalVendors(vendors) }, [vendors])
+
+  const [productPanelOpen, setProductPanelOpen] = React.useState(false)
+  const [vendorPanelOpen, setVendorPanelOpen] = React.useState(false)
 
   // Section 1
   const [productId, setProductId] = React.useState(defaultProductId ?? '')
   const [vendorId, setVendorId] = React.useState('')
   const [isConsignment, setIsConsignment] = React.useState(false)
-  const [batchRef, setBatchRef] = React.useState('')
+  const [supplierLotNumber, setSupplierLotNumber] = React.useState('')
   const [dateReceived, setDateReceived] = React.useState(todayString())
 
   // Section 2
@@ -301,13 +344,18 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
       setIsConsignment(false)
       return
     }
-    const vendor = vendors.find((v) => v.id === vendorId)
+    const vendor = localVendors.find((v) => v.id === vendorId)
     if (vendor?.type === 'consignment') {
       setIsConsignment(true)
     }
-  }, [vendorId, vendors])
+  }, [vendorId, localVendors])
 
   // ─── Derived calculations ─────────────────────────────────────────────────
+
+  const selectedProduct = React.useMemo(
+    () => localProducts.find((p) => p.id === productId) ?? null,
+    [localProducts, productId],
+  )
 
   const totalUnits = React.useMemo(() => {
     if (purchaseMode === 'unit') {
@@ -326,12 +374,22 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
     return cost / totalUnits
   }, [totalCost, totalUnits])
 
+  const effectiveSellingPrice = React.useMemo(() => {
+    if (overrideSelling && sellingPrice) {
+      const sp = parseFloat(sellingPrice)
+      return isNaN(sp) || sp <= 0 ? null : sp
+    }
+    if (selectedProduct) {
+      const sp = parseFloat(selectedProduct.selling_price as string)
+      return isNaN(sp) || sp <= 0 ? null : sp
+    }
+    return null
+  }, [overrideSelling, sellingPrice, selectedProduct])
+
   const grossMargin = React.useMemo(() => {
-    if (!overrideSelling || !sellingPrice) return null
-    const sp = parseFloat(sellingPrice)
-    if (isNaN(sp) || sp <= 0 || costPerUnit === null) return null
-    return ((sp - costPerUnit) / sp) * 100
-  }, [overrideSelling, sellingPrice, costPerUnit])
+    if (effectiveSellingPrice === null || costPerUnit === null) return null
+    return ((effectiveSellingPrice - costPerUnit) / effectiveSellingPrice) * 100
+  }, [effectiveSellingPrice, costPerUnit])
 
   function marginColor(): string {
     if (grossMargin === null) return 'var(--text-secondary)'
@@ -342,17 +400,39 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
 
   // ─── Options for searchable selects ──────────────────────────────────────
 
-  const productOptions = products.map((p) => ({
+  const productOptions = localProducts.map((p) => ({
     id: p.id,
     label: p.name,
     sub: p.sku,
   }))
 
-  const vendorOptions = vendors.map((v) => ({
+  const vendorOptions = localVendors.map((v) => ({
     id: v.id,
     label: v.name,
     sub: v.type === 'consignment' ? 'Consignment' : 'Direct',
   }))
+
+  // ─── Inline creation handlers ──────────────────────────────────────────────
+
+  function handleProductCreated(product: Product) {
+    const withDefaults: ProductWithStock = {
+      ...product,
+      category_name: categories.find((c) => c.id === product.category_id)?.name ?? null,
+      current_stock: 0, // brand new — no batches yet
+    }
+    setLocalProducts((prev) => [...prev, withDefaults])
+    setProductId(product.id)
+  }
+
+  function handleVendorCreated(vendor: Vendor) {
+    const withDefaults: VendorWithStats = {
+      ...vendor,
+      batch_count: 0,
+      outstanding_qty: 0,
+    }
+    setLocalVendors((prev) => [...prev, withDefaults])
+    setVendorId(vendor.id)
+  }
 
   // ─── Validation ───────────────────────────────────────────────────────────
 
@@ -396,8 +476,6 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
     setErrors({})
     setSubmitting(true)
 
-    const selectedProduct = products.find((p) => p.id === productId)
-
     try {
       const result = await createBatch({
         productId,
@@ -408,7 +486,7 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         totalPurchaseCost: parseFloat(totalCost),
         sellingPriceOverride: overrideSelling && sellingPrice ? parseFloat(sellingPrice) : null,
         expiryDate: hasExpiry && expiryDate ? new Date(expiryDate) : null,
-        batchRef: batchRef.trim() || null,
+        supplierLotNumber: supplierLotNumber.trim() || null,
         notes: notes.trim() || null,
         isConsignment,
       })
@@ -430,6 +508,7 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
+    <>
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6 max-w-2xl mx-auto">
 
       {/* Back link */}
@@ -454,8 +533,19 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
               value={productId}
               onChange={setProductId}
               placeholder="Search products…"
+              onCreateNew={() => setProductPanelOpen(true)}
+              createNewLabel="Create new product…"
             />
           </div>
+          {selectedProduct && (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Currently sells for{' '}
+              <span className="mono font-medium" style={{ color: 'var(--text-secondary)' }}>
+                {getCurrencySymbol(currency)}{fmt(selectedProduct.selling_price)}
+              </span>
+              {' '}— for reference while you fill in cost below.
+            </p>
+          )}
         </Field>
 
         {/* Vendor */}
@@ -466,6 +556,8 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
             onChange={setVendorId}
             placeholder="Select a vendor…"
             emptyLabel="(No vendor / Open market)"
+            onCreateNew={() => setVendorPanelOpen(true)}
+            createNewLabel="Create new vendor…"
           />
         </Field>
 
@@ -476,16 +568,20 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
           label="Mark as consignment stock"
         />
 
-        {/* Batch ref + Date in a 2-col grid */}
+        {/* Supplier lot number + Date in a 2-col grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Batch / Lot Reference">
+          <Field label="Supplier Lot Number (optional)">
             <Input
               type="text"
-              value={batchRef}
-              onChange={(e) => setBatchRef(e.target.value)}
-              placeholder="Supplier batch or lot number"
+              value={supplierLotNumber}
+              onChange={(e) => setSupplierLotNumber(e.target.value)}
+              placeholder="Only if the delivery has one"
               maxLength={100}
             />
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Your internal batch reference is generated automatically — this
+              is just for the supplier&apos;s own code, if the delivery has one.
+            </p>
           </Field>
           <Field label="Date Received" required error={errors.dateReceived}>
             <div data-error={!!errors.dateReceived}>
@@ -592,19 +688,24 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
 
         {/* Calculated: cost per unit */}
         {costPerUnit !== null && totalUnits > 0 && (
-          <div
-            className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-            style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
-          >
-            <span style={{ color: 'var(--text-secondary)' }}>
-              Cost per unit
-              {purchaseMode === 'pack' && totalUnits > 0 && (
-                <span style={{ color: 'var(--text-muted)' }}> ({totalUnits} units total)</span>
-              )}
-            </span>
-            <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
-              {getCurrencySymbol(currency)}{fmt(costPerUnit)}
-            </span>
+          <div className="flex flex-col gap-1">
+            <div
+              className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
+              style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
+            >
+              <span style={{ color: 'var(--text-secondary)' }}>
+                Cost per unit
+                {purchaseMode === 'pack' && totalUnits > 0 && (
+                  <span style={{ color: 'var(--text-muted)' }}> ({totalUnits} units total)</span>
+                )}
+              </span>
+              <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
+                {getCurrencySymbol(currency)}{fmt(costPerUnit)}
+              </span>
+            </div>
+            <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
+              What you&apos;re paying per unit — compare it against the selling price above to see your margin.
+            </p>
           </div>
         )}
 
@@ -616,42 +717,45 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         />
 
         {overrideSelling && (
-          <>
-            <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
-              <div data-error={!!errors.sellingPrice} className="relative">
-                <span
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {getCurrencySymbol(currency)}
-                </span>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={sellingPrice}
-                  onChange={(e) => setSellingPrice(e.target.value)}
-                  placeholder="0.00"
-                  className="pl-7"
-                />
-              </div>
-            </Field>
-
-            {grossMargin !== null && (
-              <div
-                className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+          <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
+            <div data-error={!!errors.sellingPrice} className="relative">
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                style={{ color: 'var(--text-muted)' }}
               >
-                <span style={{ color: 'var(--text-secondary)' }}>Gross Margin</span>
-                <span className="font-semibold" style={{ color: marginColor() }}>
-                  {grossMargin.toFixed(1)}%
-                  {grossMargin < 0 && ' — selling below cost'}
-                  {grossMargin >= 0 && grossMargin < 15 && ' — low margin'}
-                  {grossMargin >= 15 && ' — healthy'}
-                </span>
-              </div>
-            )}
-          </>
+                {getCurrencySymbol(currency)}
+              </span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={sellingPrice}
+                onChange={(e) => setSellingPrice(e.target.value)}
+                placeholder="0.00"
+                className="pl-7"
+              />
+            </div>
+          </Field>
+        )}
+
+        {grossMargin !== null && (
+          <div
+            className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
+            style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+          >
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Gross Margin
+              {!overrideSelling && (
+                <span style={{ color: 'var(--text-muted)' }}> (at current selling price)</span>
+              )}
+            </span>
+            <span className="font-semibold" style={{ color: marginColor() }}>
+              {grossMargin.toFixed(1)}%
+              {grossMargin < 0 && ' — selling below cost'}
+              {grossMargin >= 0 && grossMargin < 15 && ' — low margin'}
+              {grossMargin >= 15 && ' — healthy'}
+            </span>
+          </div>
         )}
       </Section>
 
@@ -722,5 +826,18 @@ export function IntakeForm({ products, vendors, defaultProductId }: IntakeFormPr
         </button>
       </div>
     </form>
+
+    <ProductSlideOver
+      open={productPanelOpen}
+      onOpenChange={setProductPanelOpen}
+      categories={categories}
+      onCreated={handleProductCreated}
+    />
+    <VendorSlideOver
+      open={vendorPanelOpen}
+      onOpenChange={setVendorPanelOpen}
+      onCreated={handleVendorCreated}
+    />
+    </>
   )
 }

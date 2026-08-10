@@ -50,7 +50,7 @@ export async function createBatch(formData: {
   totalPurchaseCost: number
   sellingPriceOverride?: number | null
   expiryDate?: Date | null
-  batchRef?: string | null
+  supplierLotNumber?: string | null
   notes?: string | null
   isConsignment?: boolean
 }): Promise<{ success: true; data: Batch } | { success: false; error: string }> {
@@ -101,6 +101,21 @@ export async function createBatch(formData: {
         ? formData.totalPurchaseCost / actualUnits
         : 0
 
+    // Auto-generate the internal batch reference: INT-YYYYMMDD-### where ###
+    // is that store's running count of batches received today. This used to
+    // be a free-text field the user had to fill in by hand every time — now
+    // it's always present without asking, and the supplier's own lot code
+    // (if the delivery has one) is captured separately below.
+    const today = new Date()
+    const datePart = today.toISOString().slice(0, 10).replace(/-/g, '')
+    const todayCountResult = await query(
+      `SELECT COUNT(*)::int AS count FROM batches
+       WHERE store_id = $1 AND received_at::date = CURRENT_DATE`,
+      [user.store_id],
+    )
+    const seq = (todayCountResult.rows[0].count as number) + 1
+    const batchRef = `INT-${datePart}-${String(seq).padStart(3, '0')}`
+
     const result = await query(
       `INSERT INTO batches (
         id,
@@ -108,6 +123,7 @@ export async function createBatch(formData: {
         product_id,
         vendor_id,
         batch_ref,
+        supplier_lot_number,
         qty_received,
         qty_remaining,
         pack_size,
@@ -120,13 +136,14 @@ export async function createBatch(formData: {
         received_at,
         received_by_id
       ) VALUES (
-        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14
+        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), $15
       ) RETURNING *`,
       [
         user.store_id,
         formData.productId,
         formData.vendorId ?? null,
-        formData.batchRef ?? null,
+        batchRef,
+        formData.supplierLotNumber?.trim() || null,
         actualUnits,           // qty_received stored as actual units
         actualUnits,           // qty_remaining starts equal to qty_received
         packSize,
@@ -276,6 +293,7 @@ export async function getBatchById(
       product_id: row.product_id as string,
       vendor_id: row.vendor_id as string | null,
       batch_ref: row.batch_ref as string | null,
+      supplier_lot_number: row.supplier_lot_number as string | null,
       qty_received: row.qty_received as number,
       qty_remaining: row.qty_remaining as number,
       pack_size: row.pack_size as number,

@@ -1,4 +1,4 @@
-import { getProducts } from '@/app/actions/products'
+import { getAllActiveProducts, getCategories } from '@/app/actions/products'
 import { getVendors } from '@/app/actions/vendors'
 import { IntakeForm } from '@/components/intake/intake-form'
 
@@ -13,13 +13,15 @@ export const metadata = {
 export default async function NewIntakePage({ searchParams }: PageProps) {
   const { productId } = await searchParams
 
-  const [productsResult, vendorsResult] = await Promise.all([
-    getProducts(),
+  const [productsResult, vendorsResult, categoriesResult] = await Promise.all([
+    getAllActiveProducts(),
     getVendors(),
+    getCategories(),
   ])
 
-  const products = productsResult.success ? productsResult.data.products : []
+  const products = productsResult.success ? productsResult.data : []
   const vendors = vendorsResult.success ? vendorsResult.data : []
+  const categories = categoriesResult.success ? categoriesResult.data : []
 
   return (
     <div className="px-6 py-8">
@@ -35,6 +37,7 @@ export default async function NewIntakePage({ searchParams }: PageProps) {
       <IntakeForm
         products={products}
         vendors={vendors}
+        categories={categories}
         defaultProductId={productId}
       />
     </div>
