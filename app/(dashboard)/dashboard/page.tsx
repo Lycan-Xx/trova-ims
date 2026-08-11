@@ -1,13 +1,13 @@
 import Link from 'next/link'
-import { AlertTriangle } from 'lucide-react'
+import { TriangleAlert as AlertTriangle } from 'lucide-react'
 import { StatCard } from '@/components/ui/stat-card'
 import { WeeklyChart } from '@/components/dashboard/weekly-chart'
 import { getSalesAnalytics } from '@/app/actions/analytics'
+import { getStoreSettings } from '@/app/actions/settings'
 import { getLowStockAlerts, getExpiryAlerts } from '@/app/actions/alerts'
 import { getCurrentUser } from '@/lib/auth'
 import { getOnboardingState } from '@/lib/actions/onboarding'
 import { OnboardingJoyride } from '@/components/dashboard/onboarding-joyride'
-import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol, formatCurrency } from '@/lib/currency'
 
 function fmtCurrency(n: number, symbol: string): string {

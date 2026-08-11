@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 import { pool, query } from '@/lib/db'
 import { handleFirstSignUp } from '@/lib/auth/first-run'
 import type { User, UserRole } from '@/lib/db/schema'
@@ -92,7 +93,7 @@ export const auth = betterAuth({
  * Better Auth session, keyed on the Better Auth user.id stored in our
  * users.auth_id column.
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   try {
     const session = await auth.api.getSession({ headers: await headers() })
     if (!session?.user?.id) return null
@@ -106,7 +107,7 @@ export async function getCurrentUser(): Promise<User | null> {
   } catch {
     return null
   }
-}
+})
 
 export async function requireRole(allowedRoles: UserRole[]): Promise<User> {
   const user = await getCurrentUser()
