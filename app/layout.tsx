@@ -2,17 +2,27 @@ import { Analytics } from '@vercel/analytics/next'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/local'
 import './globals.css'
 
 const inter = Inter({
-  subsets: ['latin'],
+  src: [
+    { path: './fonts/inter-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/inter-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/inter-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/inter-700.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-inter',
   display: 'swap',
 })
 
 const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
+  src: [
+    { path: './fonts/jetbrains-mono-400.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/jetbrains-mono-500.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/jetbrains-mono-600.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/jetbrains-mono-700.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-jetbrains-mono',
   display: 'swap',
 })

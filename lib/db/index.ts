@@ -5,31 +5,50 @@ import { awsCredentialsProvider } from '@vercel/functions/oidc'
 import { attachDatabasePool } from '@vercel/functions'
 import * as schema from './schema'
 
-const signer = new Signer({
-  credentials: awsCredentialsProvider({
-    roleArn: process.env.AWS_ROLE_ARN!,
-    clientConfig: { region: process.env.AWS_REGION! },
-  }),
-  region: process.env.AWS_REGION!,
-  hostname: process.env.PGHOST!,
-  username: process.env.PGUSER || 'postgres',
-  port: 5432,
-})
+// ── Support both DATABASE_URL (direct connection) and AWS RDS Signer ──────────
 
-export const pool = new Pool({
-  host: process.env.PGHOST!,
-  database: process.env.PGDATABASE || 'postgres',
-  port: 5432,
-  user: process.env.PGUSER || 'postgres',
-  password: () => signer.getAuthToken(),
-  ssl: { rejectUnauthorized: false },
-  // Keep connections alive — Aurora drops idle TCP connections after ~5 min
-  max: 10,
-  idleTimeoutMillis: 30_000,        // remove idle clients from pool after 30s
-  connectionTimeoutMillis: 10_000,  // fail fast if Aurora is cold-starting
-  // Allow the pool to reconnect after a connection error
-  allowExitOnIdle: false,
-})
+let pool: Pool
+
+if (process.env.DATABASE_URL) {
+  // Direct PostgreSQL connection string (local development or standard deployment)
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    allowExitOnIdle: false,
+  })
+} else if (process.env.PGHOST && process.env.AWS_ROLE_ARN && process.env.AWS_REGION) {
+  // AWS RDS Signer (Vercel deployment with Aurora)
+  const signer = new Signer({
+    credentials: awsCredentialsProvider({
+      roleArn: process.env.AWS_ROLE_ARN!,
+      clientConfig: { region: process.env.AWS_REGION! },
+    }),
+    region: process.env.AWS_REGION!,
+    hostname: process.env.PGHOST!,
+    username: process.env.PGUSER || 'postgres',
+    port: 5432,
+  })
+
+  pool = new Pool({
+    host: process.env.PGHOST!,
+    database: process.env.PGDATABASE || 'postgres',
+    port: 5432,
+    user: process.env.PGUSER || 'postgres',
+    password: () => signer.getAuthToken(),
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    allowExitOnIdle: false,
+  })
+} else {
+  throw new Error(
+    'No database configuration found. Set either DATABASE_URL or AWS_ROLE_ARN + AWS_REGION + PGHOST'
+  )
+}
 
 // Log and discard broken connections so the pool can replace them cleanly
 pool.on('error', (err) => {
@@ -38,6 +57,7 @@ pool.on('error', (err) => {
 
 attachDatabasePool(pool)
 
+export { pool }
 export const db = drizzle(pool, { schema })
 
 /** Single-statement queries — retries once on connection errors (handles Aurora idle drops) */
