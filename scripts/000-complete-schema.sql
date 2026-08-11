@@ -272,11 +272,7 @@ COMMENT ON TABLE invitations IS 'Pending team member invitations with role assig
 -- ============================================================
 
 -- Ensure users can only belong to one store and maintain isolation
--- (partial uniqueness can only be expressed as a partial unique index in
--- Postgres — ADD CONSTRAINT ... UNIQUE(...) WHERE ... is not valid syntax)
-CREATE UNIQUE INDEX IF NOT EXISTS uc_users_auth_id_store
-  ON users(auth_id, store_id)
-  WHERE auth_id IS NOT NULL;
+ALTER TABLE users ADD CONSTRAINT uc_users_auth_id_store UNIQUE(auth_id, store_id) WHERE auth_id IS NOT NULL;
 
 -- Ensure unique receipt numbers within store context
 ALTER TABLE sales ADD CONSTRAINT uc_sales_receipt_store UNIQUE(receipt_number, store_id);

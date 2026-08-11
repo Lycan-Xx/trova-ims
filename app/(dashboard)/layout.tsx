@@ -3,7 +3,7 @@ import { MobileNav } from '@/components/layout/mobile-nav'
 import { Topbar } from '@/components/layout/topbar'
 import { CurrencyProvider } from '@/components/providers/currency-provider'
 import { getCurrentUser } from '@/lib/auth'
-import { query } from '@/lib/db'
+import { getStoreSettings } from '@/app/actions/settings'
 import { redirect } from 'next/navigation'
 
 export default async function DashboardLayout({
@@ -14,12 +14,8 @@ export default async function DashboardLayout({
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
 
-  // Fetch store info for currency context
-  const storeResult = await query(
-    'SELECT id, name, address, phone, currency, created_at FROM stores WHERE id = $1 LIMIT 1',
-    [user.store_id],
-  )
-  const store = storeResult.rows[0] || null
+  const storeResult = await getStoreSettings()
+  const store = storeResult.success ? storeResult.data : null
 
   return (
     <CurrencyProvider store={store}>

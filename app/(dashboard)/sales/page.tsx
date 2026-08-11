@@ -43,29 +43,15 @@ export default async function SalesPage({ searchParams }: PageProps) {
   let summary: { totalRevenue: number; transactionCount: number; avgTransactionValue: number } | undefined
 
   if (user.role === 'owner' && salesData.totalCount > 0) {
-    // Fetch all matching sales for accurate aggregation across pages
-    const allSalesResult = await getSales({
-      dateFrom,
-      dateTo,
-      paymentMethod,
-      cashierId,
-      page: 1,
-    })
+    const totalRevenue = salesData.sales.reduce(
+      (sum, s) => sum + parseFloat(s.total_amount),
+      0,
+    )
+    const transactionCount = salesData.totalCount
+    const avgTransactionValue =
+      salesData.sales.length > 0 ? totalRevenue / salesData.sales.length : 0
 
-    if (allSalesResult.success) {
-      // Use totalCount and the current page's totals as a proxy;
-      // for a precise sum we'd need a dedicated aggregation action.
-      // Here we sum the current page and note limitations to the user.
-      const totalRevenue = salesData.sales.reduce(
-        (sum, s) => sum + parseFloat(s.total_amount),
-        0,
-      )
-      const transactionCount = salesData.totalCount
-      const avgTransactionValue =
-        salesData.sales.length > 0 ? totalRevenue / salesData.sales.length : 0
-
-      summary = { totalRevenue, transactionCount, avgTransactionValue }
-    }
+    summary = { totalRevenue, transactionCount, avgTransactionValue }
   }
 
   return (

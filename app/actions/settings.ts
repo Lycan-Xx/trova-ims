@@ -2,9 +2,10 @@
 
 import { redirect } from 'next/navigation'
 import { revalidateTag } from 'next/cache'
+import { cache } from 'react'
 import { query } from '@/lib/db'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
-import type { User, UserRole } from '@/lib/db/schema'
+import type { Store, User, UserRole } from '@/lib/db/schema'
 
 // ── updateStoreSettings ────────────────────────────────────────────────────────
 
@@ -41,25 +42,25 @@ export async function updateStoreSettings(formData: {
 
 // ── getStoreSettings ───────────────────────────────────────────────────────────
 
-export async function getStoreSettings(): Promise<
-  { success: true; data: { id: string; name: string; address: string | null; phone: string | null; currency: string } } |
+export const getStoreSettings = cache(async (): Promise<
+  { success: true; data: Store } |
   { success: false; error: string }
-> {
+> => {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
 
   try {
     const res = await query(
-      'SELECT id, name, address, phone, currency FROM stores WHERE id = $1 LIMIT 1',
+      'SELECT id, name, address, phone, currency, onboarding_dismissed, created_at FROM stores WHERE id = $1 LIMIT 1',
       [user.store_id],
     )
     if (res.rows.length === 0) return { success: false, error: 'Store not found.' }
-    return { success: true, data: res.rows[0] as { id: string; name: string; address: string | null; phone: string | null; currency: string } }
+    return { success: true, data: res.rows[0] as Store }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch store settings.'
     return { success: false, error: message }
   }
-}
+})
 
 // ── getUsers ───────────────────────────────────────────────────────────────────
 
