@@ -53,8 +53,12 @@ interface LineState {
   qtyUnits: string
   numPacks: string
   unitsPerPack: string
+  /** Total cost and cost-per-unit stay in sync — whichever the user typed
+   *  into most recently is the "source"; the other is recomputed from it.
+   *  lastCostField records which one that is. */
   totalCost: string
-  overrideSelling: boolean
+  costPerUnit: string
+  lastCostField: 'total' | 'perUnit'
   sellingPrice: string
   hasExpiry: boolean
   expiryDate: string
@@ -89,7 +93,8 @@ function emptyLine(productId = ''): LineState {
     numPacks: '',
     unitsPerPack: '',
     totalCost: '',
-    overrideSelling: false,
+    costPerUnit: '',
+    lastCostField: 'total',
     sellingPrice: '',
     hasExpiry: false,
     expiryDate: '',
@@ -108,26 +113,46 @@ function lineTotalUnits(line: LineState): number {
 }
 
 function lineCostPerUnit(line: LineState): number | null {
-  const cost = parseFloat(line.totalCost)
-  const units = lineTotalUnits(line)
-  if (isNaN(cost) || cost < 0 || units === 0) return null
-  return cost / units
+  if (!line.costPerUnit) return null
+  const cpu = parseFloat(line.costPerUnit)
+  return isNaN(cpu) || cpu < 0 ? null : cpu
 }
 
-function lineEffectiveSellingPrice(line: LineState, product: ProductWithStock | null): number | null {
-  if (line.overrideSelling && line.sellingPrice) {
-    const sp = parseFloat(line.sellingPrice)
-    return isNaN(sp) || sp <= 0 ? null : sp
+/**
+ * Recomputes whichever of totalCost/costPerUnit is NOT the current source
+ * of truth, given a patch about to be applied (a new cost value, or a
+ * quantity/pack change that shifts the total unit count). Always returns a
+ * complete patch — merge it with whatever triggered the recompute.
+ */
+function recomputeCostFields(line: LineState, patch: Partial<LineState>): Partial<LineState> {
+  const merged: LineState = { ...line, ...patch }
+  const units = lineTotalUnits(merged)
+  const source = patch.lastCostField ?? merged.lastCostField
+
+  if (units <= 0) return patch
+
+  if (source === 'perUnit') {
+    const cpu = parseFloat(merged.costPerUnit)
+    if (!isNaN(cpu) && cpu >= 0) {
+      return { ...patch, totalCost: (cpu * units).toFixed(2) }
+    }
+  } else {
+    const cost = parseFloat(merged.totalCost)
+    if (!isNaN(cost) && cost >= 0) {
+      return { ...patch, costPerUnit: (cost / units).toFixed(2) }
+    }
   }
-  if (product) {
-    const sp = parseFloat(product.selling_price as string)
-    return isNaN(sp) || sp <= 0 ? null : sp
-  }
-  return null
+  return patch
 }
 
-function lineGrossMargin(line: LineState, product: ProductWithStock | null): number | null {
-  const sp = lineEffectiveSellingPrice(line, product)
+function lineEffectiveSellingPrice(line: LineState): number | null {
+  if (!line.sellingPrice) return null
+  const sp = parseFloat(line.sellingPrice)
+  return isNaN(sp) || sp <= 0 ? null : sp
+}
+
+function lineGrossMargin(line: LineState): number | null {
+  const sp = lineEffectiveSellingPrice(line)
   const cpu = lineCostPerUnit(line)
   if (sp === null || cpu === null) return null
   return ((sp - cpu) / sp) * 100
@@ -153,16 +178,27 @@ function validateLine(line: LineState): LineErrors {
     if (!line.unitsPerPack || isNaN(perPack) || perPack <= 0) errs.unitsPerPack = 'Enter units per pack.'
   }
   const cost = parseFloat(line.totalCost)
-  if (!line.totalCost || isNaN(cost) || cost < 0) errs.totalCost = 'Enter a valid total cost (can be 0).'
-  if (line.overrideSelling) {
-    const sp = parseFloat(line.sellingPrice)
-    if (!line.sellingPrice || isNaN(sp) || sp <= 0) errs.sellingPrice = 'Enter a valid selling price.'
-  }
+  if (!line.totalCost || isNaN(cost) || cost < 0) errs.totalCost = 'Enter the cost — either total cost or cost per unit above.'
+  const sp = parseFloat(line.sellingPrice)
+  if (!line.sellingPrice || isNaN(sp) || sp <= 0) errs.sellingPrice = 'Enter a valid selling price.'
   if (line.hasExpiry && !line.expiryDate) errs.expiryDate = 'Please select an expiry date.'
   return errs
 }
 
-function lineToInput(line: LineState): IntakeLineInput {
+function lineToInput(line: LineState, products: ProductWithStock[]): IntakeLineInput {
+  // The selling price field is always shown, pre-filled with the product's
+  // current default — so most lines will match the default exactly. Only
+  // send it to the backend as a per-batch override when it actually
+  // differs; otherwise leave it null so this batch keeps tracking the
+  // product's price automatically if that price changes later (raising a
+  // product's price should apply to existing unsold stock too, not just
+  // stock received after the price change).
+  const product = products.find((p) => p.id === line.productId)
+  const defaultPrice = product ? parseFloat(product.selling_price as string) : null
+  const enteredPrice = line.sellingPrice ? parseFloat(line.sellingPrice) : null
+  const isOverride =
+    enteredPrice !== null && (defaultPrice === null || Math.abs(enteredPrice - defaultPrice) > 0.001)
+
   return {
     productId: line.productId,
     vendorId: line.vendorId || null,
@@ -170,7 +206,7 @@ function lineToInput(line: LineState): IntakeLineInput {
     qtyReceived: line.purchaseMode === 'unit' ? parseInt(line.qtyUnits, 10) : parseInt(line.numPacks, 10),
     packSize: line.purchaseMode === 'pack' ? parseInt(line.unitsPerPack, 10) : 1,
     totalPurchaseCost: parseFloat(line.totalCost),
-    sellingPriceOverride: line.overrideSelling && line.sellingPrice ? parseFloat(line.sellingPrice) : null,
+    sellingPriceOverride: isOverride ? enteredPrice : null,
     expiryDate: line.hasExpiry && line.expiryDate ? new Date(line.expiryDate) : null,
     supplierLotNumber: line.supplierLotNumber.trim() || null,
     isConsignment: line.isConsignment,
@@ -464,11 +500,6 @@ function IntakeLineCard({
   onCreateProduct,
   onCreateVendor,
 }: IntakeLineCardProps) {
-  const selectedProduct = React.useMemo(
-    () => products.find((p) => p.id === line.productId) ?? null,
-    [products, line.productId],
-  )
-
   const productOptions = React.useMemo(
     () => products.map((p) => ({ id: p.id, label: p.name, sub: p.sku })),
     [products],
@@ -480,7 +511,7 @@ function IntakeLineCard({
 
   const totalUnits = lineTotalUnits(line)
   const costPerUnit = lineCostPerUnit(line)
-  const grossMargin = lineGrossMargin(line, selectedProduct)
+  const grossMargin = lineGrossMargin(line)
 
   function handleVendorChange(vendorId: string) {
     if (!vendorId) {
@@ -489,6 +520,34 @@ function IntakeLineCard({
     }
     const vendor = vendors.find((v) => v.id === vendorId)
     onUpdate({ vendorId, isConsignment: vendor?.type === 'consignment' ? true : line.isConsignment })
+  }
+
+  function handleProductChange(productId: string) {
+    const patch: Partial<LineState> = { productId }
+    // Pre-fill selling price with this product's current default — the
+    // field stays freely editable, this just saves re-typing the common
+    // case where a batch sells at the usual price.
+    if (!line.sellingPrice) {
+      const product = products.find((p) => p.id === productId)
+      if (product) patch.sellingPrice = parseFloat(product.selling_price as string).toFixed(2)
+    }
+    onUpdate(patch)
+  }
+
+  // Any change that affects total unit count (quantity, pack size, or
+  // switching purchase mode) needs the cost fields resynced — whichever of
+  // Total Cost / Cost per Unit the user typed into most recently stays the
+  // source of truth, and the other one recomputes from it.
+  function handleUnitsAffectingChange(patch: Partial<LineState>) {
+    onUpdate(recomputeCostFields(line, patch))
+  }
+
+  function handleTotalCostChange(raw: string) {
+    onUpdate(recomputeCostFields(line, { totalCost: raw, lastCostField: 'total' }))
+  }
+
+  function handleCostPerUnitChange(raw: string) {
+    onUpdate(recomputeCostFields(line, { costPerUnit: raw, lastCostField: 'perUnit' }))
   }
 
   return (
@@ -517,21 +576,12 @@ function IntakeLineCard({
           <SearchableSelect
             options={productOptions}
             value={line.productId}
-            onChange={(productId) => onUpdate({ productId })}
+            onChange={handleProductChange}
             placeholder="Search products…"
             onCreateNew={onCreateProduct}
             createNewLabel="Create new product…"
           />
         </div>
-        {selectedProduct && (
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Currently sells for{' '}
-            <span className="mono font-medium" style={{ color: 'var(--text-secondary)' }}>
-              {getCurrencySymbol(currency)}{fmt(selectedProduct.selling_price)}
-            </span>
-            {' '}— for reference while you fill in cost below.
-          </p>
-        )}
       </Field>
 
       {/* Vendor */}
@@ -576,7 +626,7 @@ function IntakeLineCard({
             <button
               key={mode}
               type="button"
-              onClick={() => onUpdate({ purchaseMode: mode })}
+              onClick={() => handleUnitsAffectingChange({ purchaseMode: mode })}
               className="flex-1 flex flex-col items-start gap-0.5 rounded-lg px-4 py-3 border text-sm font-medium transition-all"
               style={{
                 background: line.purchaseMode === mode ? 'var(--accent-primary-muted)' : 'var(--bg-input)',
@@ -602,7 +652,7 @@ function IntakeLineCard({
               min={1}
               step={1}
               value={line.qtyUnits}
-              onChange={(e) => onUpdate({ qtyUnits: e.target.value })}
+              onChange={(e) => handleUnitsAffectingChange({ qtyUnits: e.target.value })}
               placeholder="e.g. 100"
             />
           </div>
@@ -616,7 +666,7 @@ function IntakeLineCard({
                 min={1}
                 step={1}
                 value={line.numPacks}
-                onChange={(e) => onUpdate({ numPacks: e.target.value })}
+                onChange={(e) => handleUnitsAffectingChange({ numPacks: e.target.value })}
                 placeholder="e.g. 10"
               />
             </div>
@@ -628,7 +678,7 @@ function IntakeLineCard({
                 min={1}
                 step={1}
                 value={line.unitsPerPack}
-                onChange={(e) => onUpdate({ unitsPerPack: e.target.value })}
+                onChange={(e) => handleUnitsAffectingChange({ unitsPerPack: e.target.value })}
                 placeholder="e.g. 12"
               />
             </div>
@@ -636,9 +686,58 @@ function IntakeLineCard({
         </div>
       )}
 
-      {/* Total cost */}
-      <Field label={`Total Purchase Cost (${getCurrencySymbol(currency)})`} required error={errors.totalCost}>
-        <div data-error={!!errors.totalCost} className="relative">
+      {/* Cost — either box can be typed into, the other fills in automatically */}
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label={`Total Purchase Cost (${getCurrencySymbol(currency)})`} required error={errors.totalCost}>
+            <div data-error={!!errors.totalCost} className="relative">
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {getCurrencySymbol(currency)}
+              </span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={line.totalCost}
+                onChange={(e) => handleTotalCostChange(e.target.value)}
+                placeholder="0.00"
+                className="pl-7"
+              />
+            </div>
+          </Field>
+          <Field label={`Cost Per Unit (${getCurrencySymbol(currency)})`}>
+            <div className="relative">
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {getCurrencySymbol(currency)}
+              </span>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={line.costPerUnit}
+                onChange={(e) => handleCostPerUnitChange(e.target.value)}
+                placeholder="0.00"
+                className="pl-7"
+              />
+            </div>
+          </Field>
+        </div>
+        <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
+          {totalUnits > 0
+            ? `Know either number? Type it in — the other fills in for ${totalUnits} unit${totalUnits !== 1 ? 's' : ''} automatically.`
+            : 'Know either number? Type it in — enter a quantity above and the other fills in automatically.'}
+        </p>
+      </div>
+
+      {/* Selling price — always shown, pre-filled with this product's usual price */}
+      <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
+        <div data-error={!!errors.sellingPrice} className="relative">
           <span
             className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
             style={{ color: 'var(--text-muted)' }}
@@ -649,85 +748,40 @@ function IntakeLineCard({
             type="number"
             min={0}
             step="0.01"
-            value={line.totalCost}
-            onChange={(e) => onUpdate({ totalCost: e.target.value })}
+            value={line.sellingPrice}
+            onChange={(e) => onUpdate({ sellingPrice: e.target.value })}
             placeholder="0.00"
             className="pl-7"
           />
         </div>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Pre-filled with this product&apos;s usual price — change it if this batch sells for something different.
+        </p>
       </Field>
 
-      {/* Calculated: cost per unit */}
-      {costPerUnit !== null && totalUnits > 0 && (
-        <div className="flex flex-col gap-1">
+      {/* Profit — one line, always visible once cost and selling price are both set */}
+      {grossMargin !== null && costPerUnit !== null && (() => {
+        const sellingPrice = lineEffectiveSellingPrice(line) ?? 0
+        const profitPerUnit = sellingPrice - costPerUnit
+        return (
           <div
-            className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-            style={{ background: 'var(--accent-primary-muted)', border: '1px solid rgba(245,97,10,0.2)' }}
+            className="rounded-lg px-4 py-3 text-sm"
+            style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
           >
-            <span style={{ color: 'var(--text-secondary)' }}>
-              Cost per unit
-              {line.purchaseMode === 'pack' && totalUnits > 0 && (
-                <span style={{ color: 'var(--text-muted)' }}> ({totalUnits} units total)</span>
-              )}
+            <span style={{ color: 'var(--text-secondary)' }}>You make </span>
+            <span className="font-semibold mono" style={{ color: marginColor(grossMargin) }}>
+              {getCurrencySymbol(currency)}{fmt(Math.abs(profitPerUnit))}
             </span>
-            <span className="font-semibold mono" style={{ color: 'var(--accent-primary)' }}>
-              {getCurrencySymbol(currency)}{fmt(costPerUnit)}
+            <span style={{ color: 'var(--text-secondary)' }}> per unit </span>
+            <span className="font-semibold" style={{ color: marginColor(grossMargin) }}>
+              ({grossMargin.toFixed(1)}%)
             </span>
-          </div>
-          <p className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>
-            What you&apos;re paying per unit — compare it against the selling price above to see your margin.
-          </p>
-        </div>
-      )}
-
-      {/* Override selling price */}
-      <Toggle
-        checked={line.overrideSelling}
-        onChange={(v) => onUpdate({ overrideSelling: v })}
-        label="Override selling price for this batch"
-      />
-
-      {line.overrideSelling && (
-        <Field label={`Selling Price per Unit (${getCurrencySymbol(currency)})`} required error={errors.sellingPrice}>
-          <div data-error={!!errors.sellingPrice} className="relative">
-            <span
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {getCurrencySymbol(currency)}
-            </span>
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={line.sellingPrice}
-              onChange={(e) => onUpdate({ sellingPrice: e.target.value })}
-              placeholder="0.00"
-              className="pl-7"
-            />
-          </div>
-        </Field>
-      )}
-
-      {grossMargin !== null && (
-        <div
-          className="rounded-lg px-4 py-3 text-sm flex items-center justify-between"
-          style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
-        >
-          <span style={{ color: 'var(--text-secondary)' }}>
-            Gross Margin
-            {!line.overrideSelling && (
-              <span style={{ color: 'var(--text-muted)' }}> (at current selling price)</span>
+            {profitPerUnit < 0 && (
+              <span style={{ color: 'var(--danger)' }}> — you&apos;re selling below cost</span>
             )}
-          </span>
-          <span className="font-semibold" style={{ color: marginColor(grossMargin) }}>
-            {grossMargin.toFixed(1)}%
-            {grossMargin < 0 && ' — selling below cost'}
-            {grossMargin >= 0 && grossMargin < 15 && ' — low margin'}
-            {grossMargin >= 15 && ' — healthy'}
-          </span>
-        </div>
-      )}
+          </div>
+        )
+      })()}
 
       {/* Expiry */}
       <Toggle
@@ -780,7 +834,14 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
 
   // One or more product+vendor lines. A single-line submission behaves
   // exactly as intake always has; multiple lines share one intake session.
-  const [lines, setLines] = React.useState<LineState[]>([emptyLine(defaultProductId)])
+  const [lines, setLines] = React.useState<LineState[]>(() => {
+    const first = emptyLine(defaultProductId)
+    if (defaultProductId) {
+      const product = products.find((p) => p.id === defaultProductId)
+      if (product) first.sellingPrice = parseFloat(product.selling_price as string).toFixed(2)
+    }
+    return [first]
+  })
   const [lineErrors, setLineErrors] = React.useState<Record<string, LineErrors>>({})
 
   const [submitting, setSubmitting] = React.useState(false)
@@ -875,7 +936,7 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
       const result = await createBatchSession({
         receivedAt: new Date(dateReceived),
         notes: sessionNotes.trim() || null,
-        lines: lines.map(lineToInput),
+        lines: lines.map((l) => lineToInput(l, localProducts)),
       })
 
       if (!result.success) {

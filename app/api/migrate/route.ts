@@ -85,6 +85,8 @@ const STATEMENTS = [
     product_id              UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     vendor_id               UUID REFERENCES vendors(id) ON DELETE SET NULL,
     batch_ref               TEXT,
+    supplier_lot_number     TEXT,
+    intake_session_id       UUID,
     qty_received            INTEGER NOT NULL,
     qty_remaining           INTEGER NOT NULL,
     pack_size               INTEGER NOT NULL DEFAULT 1,
@@ -97,9 +99,17 @@ const STATEMENTS = [
     received_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     received_by_id          UUID REFERENCES users(id) ON DELETE SET NULL
   )`,
+  // Safe ALTERs for a batches table that already existed before these columns
+  // were introduced — CREATE TABLE IF NOT EXISTS above is a no-op on prod,
+  // so these are what actually apply the change to the live database.
+  `ALTER TABLE batches ADD COLUMN IF NOT EXISTS supplier_lot_number TEXT`,
+  `ALTER TABLE batches ADD COLUMN IF NOT EXISTS intake_session_id UUID`,
   `CREATE INDEX IF NOT EXISTS idx_batches_store_id   ON batches(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_batches_product_id ON batches(product_id)`,
   `CREATE INDEX IF NOT EXISTS idx_batches_vendor_id  ON batches(vendor_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_batches_intake_session
+    ON batches(store_id, intake_session_id)
+    WHERE intake_session_id IS NOT NULL`,
 
   `CREATE TABLE IF NOT EXISTS sales (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
