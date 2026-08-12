@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { TriangleAlert as AlertTriangle } from 'lucide-react'
 import { StatCard } from '@/components/ui/stat-card'
-import { WeeklyChart } from '@/components/dashboard/weekly-chart'
+import { WeeklyChartLoader } from '@/components/dashboard/weekly-chart-loader'
 import { getSalesAnalytics } from '@/app/actions/analytics'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getLowStockAlerts, getExpiryAlerts } from '@/app/actions/alerts'
@@ -96,11 +96,9 @@ export default async function DashboardPage() {
       </div>
 
       {/* Onboarding Joyride Tour */}
-      {/* 
       {isOwner && onboardingState && !onboardingState.isDismissed && (
         <OnboardingJoyride state={onboardingState} />
       )}
-      */}
 
       {/* Alert banner */}
       {alertCount > 0 && (
@@ -250,7 +248,7 @@ export default async function DashboardPage() {
                 Full analytics &rarr;
               </Link>
             </div>
-            <WeeklyChart data={weeklyChartData} currencySymbol={currencySymbol} />
+            <WeeklyChartLoader data={weeklyChartData} currencySymbol={currencySymbol} />
           </div>
 
           {/* RIGHT — Top Products Today */}

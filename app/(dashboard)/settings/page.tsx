@@ -50,7 +50,6 @@ export default async function SettingsPage() {
       )}
 
       {/* Section C — Tutorial & Onboarding */}
-      {/* 
       {isOwner && (
         <section
           className="rounded-xl p-6"
@@ -72,7 +71,6 @@ export default async function SettingsPage() {
           </div>
         </section>
       )}
-      */}
 
       {/* Non-owner: read-only note */}
       {!isOwner && (
