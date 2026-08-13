@@ -378,6 +378,7 @@ export async function getBatchById(
       sku: row.product_sku as string,
       name: row.product_name as string,
       description: null,
+      barcode: null,
       unit: row.product_unit as Product['unit'],
       selling_price: row.product_selling_price as string,
       reorder_level: row.product_reorder_level as number,

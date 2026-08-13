@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Check, ChevronsUpDown, ChevronLeft, Loader2, Plus, X } from 'lucide-react'
+import { Check, ChevronsUpDown, ChevronLeft, Loader2, Plus, X, ScanBarcode } from 'lucide-react'
 import Link from 'next/link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -17,6 +17,7 @@ import {
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { createBatchSession, type IntakeLineInput } from '@/app/actions/batches'
+import { getProductByBarcode } from '@/app/actions/products'
 import { ProductSlideOver } from '@/components/products/product-slide-over'
 import { VendorSlideOver } from '@/components/vendors/vendor-slide-over'
 import type { VendorWithStats } from '@/app/actions/vendors'
@@ -30,6 +31,13 @@ interface IntakeFormProps {
   vendors: VendorWithStats[]
   categories: Category[]
   defaultProductId?: string
+  /**
+   * A barcode that was scanned elsewhere (POS) and didn't match any
+   * product. Since that lookup already came up empty, there's no point
+   * re-checking it here — open straight to the create-product panel with
+   * it pre-filled instead of making the cashier scan it a second time.
+   */
+  defaultBarcode?: string
 }
 
 type LineErrorField =
@@ -211,6 +219,76 @@ function lineToInput(line: LineState, products: ProductWithStock[]): IntakeLineI
     supplierLotNumber: line.supplierLotNumber.trim() || null,
     isConsignment: line.isConsignment,
   }
+}
+
+// ─── BarcodeScanField ───────────────────────────────────────────────────────
+// A scanner types the barcode into whatever's focused and sends a trailing
+// Enter — this field just needs to sit there, focusable, and act on Enter
+// (or on the debounce settling, for manual typing) rather than requiring the
+// cashier to open the product dropdown first.
+
+function BarcodeScanField({
+  onMatch,
+  onNotFound,
+}: {
+  onMatch: (product: ProductWithStock) => void
+  onNotFound: (barcode: string) => void
+}) {
+  const [value, setValue] = React.useState('')
+  const [checking, setChecking] = React.useState(false)
+
+  async function lookup(code: string) {
+    const trimmed = code.trim()
+    if (!trimmed) return
+    setChecking(true)
+    const result = await getProductByBarcode(trimmed)
+    setChecking(false)
+    if (result.success && result.data) {
+      onMatch(result.data)
+      setValue('')
+    } else {
+      onNotFound(trimmed)
+    }
+  }
+
+  // Debounced lookup for manual typing.
+  React.useEffect(() => {
+    if (!value.trim()) return
+    const handle = setTimeout(() => lookup(value), 400)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  return (
+    <div className="relative">
+      <ScanBarcode
+        size={15}
+        className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        style={{ color: 'var(--text-muted)' }}
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            lookup(value)
+          }
+        }}
+        placeholder="Scan or type barcode…"
+        autoComplete="off"
+        className="w-full h-10 rounded-lg pl-9 pr-9 text-sm outline-none transition-all bg-[var(--bg-input)] border border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[rgba(245,97,10,0.2)]"
+      />
+      {checking && (
+        <Loader2
+          size={14}
+          className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin"
+          style={{ color: 'var(--text-muted)' }}
+        />
+      )}
+    </div>
+  )
 }
 
 // ─── SearchableSelect ────────────────────────────────────────────────────────
@@ -483,7 +561,7 @@ interface IntakeLineCardProps {
   errors: LineErrors
   onUpdate: (patch: Partial<LineState>) => void
   onRemove: () => void
-  onCreateProduct: () => void
+  onCreateProduct: (barcode?: string) => void
   onCreateVendor: () => void
 }
 
@@ -501,7 +579,7 @@ function IntakeLineCard({
   onCreateVendor,
 }: IntakeLineCardProps) {
   const productOptions = React.useMemo(
-    () => products.map((p) => ({ id: p.id, label: p.name, sub: p.sku })),
+    () => products.map((p) => ({ id: p.id, label: p.name, sub: p.barcode ? `${p.sku} · ${p.barcode}` : p.sku })),
     [products],
   )
   const vendorOptions = React.useMemo(
@@ -570,6 +648,17 @@ function IntakeLineCard({
         ) : undefined
       }
     >
+      {/* Barcode scan — a faster way to fill in Product below, not a
+          separate field of its own. Scanning selects the matching product;
+          an unrecognized code opens the create-product panel with it
+          pre-filled. */}
+      <Field label="Scan Barcode (optional)">
+        <BarcodeScanField
+          onMatch={(product) => handleProductChange(product.id)}
+          onNotFound={(barcode) => onCreateProduct(barcode)}
+        />
+      </Field>
+
       {/* Product */}
       <Field label="Product" required error={errors.productId}>
         <div data-error={!!errors.productId}>
@@ -578,7 +667,7 @@ function IntakeLineCard({
             value={line.productId}
             onChange={handleProductChange}
             placeholder="Search products…"
-            onCreateNew={onCreateProduct}
+            onCreateNew={() => onCreateProduct()}
             createNewLabel="Create new product…"
           />
         </div>
@@ -808,7 +897,7 @@ function IntakeLineCard({
 
 // ─── Main Form ────────────────────────────────────────────────────────────────
 
-export function IntakeForm({ products, vendors, categories, defaultProductId }: IntakeFormProps) {
+export function IntakeForm({ products, vendors, categories, defaultProductId, defaultBarcode }: IntakeFormProps) {
   const router = useRouter()
   const { currency } = useCurrency()
 
@@ -825,6 +914,9 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
   const [activeLineKey, setActiveLineKey] = React.useState<string | null>(null)
   const [productPanelOpen, setProductPanelOpen] = React.useState(false)
   const [vendorPanelOpen, setVendorPanelOpen] = React.useState(false)
+  // Set when a scanned barcode didn't match anything, so the create-product
+  // panel opens with it pre-filled instead of a blank Barcode field.
+  const [pendingBarcode, setPendingBarcode] = React.useState<string | undefined>(undefined)
 
   // Shared across the whole intake session — one restock trip is normally
   // one date, and "notes about this delivery" apply to everything in it.
@@ -845,6 +937,16 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
   const [lineErrors, setLineErrors] = React.useState<Record<string, LineErrors>>({})
 
   const [submitting, setSubmitting] = React.useState(false)
+
+  // A barcode arriving via ?barcode= (redirected here from a POS scan that
+  // had no match) already failed a lookup once — skip straight to create.
+  React.useEffect(() => {
+    if (defaultBarcode) {
+      openCreateProduct(lines[0].key, defaultBarcode)
+    }
+    // Only on mount — this shouldn't reopen if the panel is closed later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── Line management ────────────────────────────────────────────────────────
 
@@ -867,8 +969,9 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
 
   // ─── Inline creation handlers ──────────────────────────────────────────────
 
-  function openCreateProduct(lineKey: string) {
+  function openCreateProduct(lineKey: string, barcode?: string) {
     setActiveLineKey(lineKey)
+    setPendingBarcode(barcode)
     setProductPanelOpen(true)
   }
 
@@ -1013,7 +1116,7 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
           errors={lineErrors[line.key] ?? {}}
           onUpdate={(patch) => updateLine(line.key, patch)}
           onRemove={() => removeLine(line.key)}
-          onCreateProduct={() => openCreateProduct(line.key)}
+          onCreateProduct={(barcode) => openCreateProduct(line.key, barcode)}
           onCreateVendor={() => openCreateVendor(line.key)}
         />
       ))}
@@ -1092,8 +1195,12 @@ export function IntakeForm({ products, vendors, categories, defaultProductId }: 
 
     <ProductSlideOver
       open={productPanelOpen}
-      onOpenChange={setProductPanelOpen}
+      onOpenChange={(next) => {
+        setProductPanelOpen(next)
+        if (!next) setPendingBarcode(undefined)
+      }}
       categories={categories}
+      defaultBarcode={pendingBarcode}
       onCreated={handleProductCreated}
     />
     <VendorSlideOver
