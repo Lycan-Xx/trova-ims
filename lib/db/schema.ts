@@ -53,6 +53,7 @@ export interface Product {
   sku: string
   name: string
   description: string | null
+  barcode: string | null // manufacturer UPC/EAN, optional, unique when set
   unit: UnitType
   selling_price: string   // DECIMAL comes back as string from pg
   reorder_level: number

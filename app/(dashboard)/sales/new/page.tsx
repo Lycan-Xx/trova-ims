@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
-import { getProducts } from '@/app/actions/products'
+import { getProducts, getProductByBarcode } from '@/app/actions/products'
 import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
 import type { ProductWithStock } from '@/app/actions/products'
 
@@ -41,6 +41,7 @@ export default function NewSalePage() {
   const [searchResults, setSearchResults] = React.useState<ProductWithStock[]>([])
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [searchLoading, setSearchLoading] = React.useState(false)
+  const [notFoundBarcode, setNotFoundBarcode] = React.useState<string | null>(null)
   const searchRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -89,6 +90,7 @@ export default function NewSalePage() {
   // Debounced product search
   React.useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    setNotFoundBarcode(null)
 
     if (!searchQuery.trim()) {
       setSearchResults([])
@@ -139,6 +141,7 @@ export default function NewSalePage() {
     })
     setSearchQuery('')
     setSearchOpen(false)
+    setNotFoundBarcode(null)
     inputRef.current?.focus()
   }
 
@@ -273,17 +276,49 @@ export default function NewSalePage() {
                 ref={inputRef}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && searchResults.length > 0) {
-                    const first = searchResults.find((p) => p.current_stock > 0)
-                    if (first) addToCart(first)
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const raw = searchQuery.trim()
+                    if (!raw) return
+
+                    // A scanner sends Enter right after the digits, often
+                    // before the debounced name/SKU search below has even
+                    // resolved — so Enter needs its own authoritative,
+                    // exact-match barcode check rather than trusting
+                    // whatever's currently in the dropdown.
+                    const barcodeResult = await getProductByBarcode(raw)
+                    if (barcodeResult.success && barcodeResult.data) {
+                      if (barcodeResult.data.current_stock > 0) {
+                        addToCart(barcodeResult.data)
+                      } else {
+                        toast.error(`${barcodeResult.data.name} is out of stock.`)
+                      }
+                      return
+                    }
+
+                    // Not a barcode match — fall back to the normal
+                    // search-dropdown behavior for a typed name/SKU.
+                    if (searchResults.length > 0) {
+                      const first = searchResults.find((p) => p.current_stock > 0)
+                      if (first) {
+                        addToCart(first)
+                        return
+                      }
+                    }
+
+                    // Nothing matched at all — most likely a scanned code
+                    // for a product that hasn't been added yet.
+                    setSearchOpen(false)
+                    setNotFoundBarcode(raw)
                   }
                   if (e.key === 'Escape') {
                     setSearchOpen(false)
                     setSearchQuery('')
+                    setNotFoundBarcode(null)
                   }
                 }}
-                placeholder="Search products by name or SKU..."
+                placeholder="Search or scan barcode..."
                 className="w-full h-10 pl-9 pr-9 rounded-lg text-sm outline-none"
                 style={{
                   background: 'var(--bg-input)',
@@ -346,6 +381,36 @@ export default function NewSalePage() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Unmatched barcode prompt */}
+            {notFoundBarcode && (
+              <div
+                className="mt-2 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm"
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)' }}
+              >
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  No product matches <span className="mono">{notFoundBarcode}</span>.
+                </span>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/intake/new?barcode=${encodeURIComponent(notFoundBarcode)}`)}
+                    className="text-sm font-semibold whitespace-nowrap"
+                    style={{ color: 'var(--accent-primary)' }}
+                  >
+                    Add new product?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotFoundBarcode(null)}
+                    aria-label="Dismiss"
+                    className="flex items-center justify-center"
+                  >
+                    <X size={14} style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </div>
               </div>
             )}
           </div>

@@ -41,6 +41,7 @@ export async function createProduct(formData: {
   sellingPrice: number | string
   reorderLevel?: number
   description?: string
+  barcode?: string | null
 }): Promise<{ success: true; data: Product } | { success: false; error: string }> {
   try {
     const user = await requireStoreAccess()
@@ -58,12 +59,13 @@ export async function createProduct(formData: {
     }
 
     const sku = generateSKU(categoryName)
+    const barcode = formData.barcode?.trim() || null
 
     const result = await query(
       `INSERT INTO products
-        (id, store_id, category_id, sku, name, description, unit, selling_price, reorder_level, is_active, created_at)
+        (id, store_id, category_id, sku, name, description, barcode, unit, selling_price, reorder_level, is_active, created_at)
        VALUES
-        (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, true, NOW())
+        (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW())
        RETURNING *`,
       [
         user.store_id,
@@ -71,6 +73,7 @@ export async function createProduct(formData: {
         sku,
         formData.name,
         formData.description ?? null,
+        barcode,
         formData.unit ?? 'piece',
         formData.sellingPrice,
         formData.reorderLevel ?? 10,
@@ -79,7 +82,11 @@ export async function createProduct(formData: {
 
     return { success: true, data: result.rows[0] as Product }
   } catch (err) {
-    return { success: false, error: (err as Error).message }
+    const msg = (err as Error).message
+    if (msg.includes('duplicate') || msg.includes('unique')) {
+      return { success: false, error: 'That barcode is already assigned to another product.' }
+    }
+    return { success: false, error: msg }
   }
 }
 
@@ -94,6 +101,7 @@ export async function updateProduct(
     sellingPrice?: number | string
     reorderLevel?: number
     description?: string | null
+    barcode?: string | null
   },
 ): Promise<{ success: true; data: Product } | { success: false; error: string }> {
   try {
@@ -115,8 +123,9 @@ export async function updateProduct(
         unit           = COALESCE($3, unit),
         selling_price  = COALESCE($4, selling_price),
         reorder_level  = COALESCE($5, reorder_level),
-        description    = $6
-       WHERE id = $7 AND store_id = $8
+        description    = $6,
+        barcode        = $7
+       WHERE id = $8 AND store_id = $9
        RETURNING *`,
       [
         formData.name ?? null,
@@ -125,6 +134,7 @@ export async function updateProduct(
         formData.sellingPrice !== undefined ? formData.sellingPrice : null,
         formData.reorderLevel ?? null,
         formData.description !== undefined ? formData.description : null,
+        formData.barcode !== undefined ? (formData.barcode?.trim() || null) : null,
         productId,
         user.store_id,
       ],
@@ -132,7 +142,11 @@ export async function updateProduct(
 
     return { success: true, data: result.rows[0] as Product }
   } catch (err) {
-    return { success: false, error: (err as Error).message }
+    const msg = (err as Error).message
+    if (msg.includes('duplicate') || msg.includes('unique')) {
+      return { success: false, error: 'That barcode is already assigned to another product.' }
+    }
+    return { success: false, error: msg }
   }
 }
 
@@ -184,7 +198,7 @@ export async function getProducts(
 
     if (filters.search) {
       conditions.push(
-        `(p.name ILIKE $${paramIdx} OR p.sku ILIKE $${paramIdx})`,
+        `(p.name ILIKE $${paramIdx} OR p.sku ILIKE $${paramIdx} OR p.barcode ILIKE $${paramIdx})`,
       )
       params.push(`%${filters.search}%`)
       paramIdx++
@@ -286,6 +300,42 @@ export async function getAllActiveProducts(): Promise<
     )
 
     return { success: true, data: result.rows as ProductWithStock[] }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
+// ─── getProductByBarcode ─────────────────────────────────────────────────────
+// Exact-match lookup used by the barcode scan flow (POS, Stock Intake, and
+// the product form's own scan-to-prefill field). Barcodes are exact codes,
+// not free text, so this is a plain equality match rather than the ILIKE
+// substring search getProducts() uses for typed queries.
+
+export async function getProductByBarcode(
+  barcode: string,
+): Promise<{ success: true; data: ProductWithStock | null } | { success: false; error: string }> {
+  try {
+    const user = await requireStoreAccess()
+    const trimmed = barcode.trim()
+    if (!trimmed) {
+      return { success: true, data: null }
+    }
+
+    const result = await query(
+      `SELECT
+         p.*,
+         c.name AS category_name,
+         COALESCE(SUM(b.qty_remaining), 0)::int AS current_stock
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN batches b ON b.product_id = p.id
+       WHERE p.barcode = $1 AND p.store_id = $2 AND p.is_active = true
+       GROUP BY p.id, c.name
+       LIMIT 1`,
+      [trimmed, user.store_id],
+    )
+
+    return { success: true, data: (result.rows[0] as ProductWithStock) ?? null }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }

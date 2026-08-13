@@ -3,7 +3,7 @@ import { getVendors } from '@/app/actions/vendors'
 import { IntakeForm } from '@/components/intake/intake-form'
 
 interface PageProps {
-  searchParams: Promise<{ productId?: string }>
+  searchParams: Promise<{ productId?: string; barcode?: string }>
 }
 
 export const metadata = {
@@ -11,7 +11,7 @@ export const metadata = {
 }
 
 export default async function NewIntakePage({ searchParams }: PageProps) {
-  const { productId } = await searchParams
+  const { productId, barcode } = await searchParams
 
   const [productsResult, vendorsResult, categoriesResult] = await Promise.all([
     getAllActiveProducts(),
@@ -39,6 +39,7 @@ export default async function NewIntakePage({ searchParams }: PageProps) {
         vendors={vendors}
         categories={categories}
         defaultProductId={productId}
+        defaultBarcode={barcode}
       />
     </div>
   )

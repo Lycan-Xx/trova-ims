@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Lock } from 'lucide-react'
+import { Loader2, Lock, ScanBarcode } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Sheet,
@@ -25,7 +25,7 @@ import {
 import { CategorySelect } from '@/components/products/category-select'
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
-import { createProduct, updateProduct } from '@/app/actions/products'
+import { createProduct, updateProduct, getProductByBarcode } from '@/app/actions/products'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category, Product, UnitType } from '@/lib/db/schema'
 
@@ -37,6 +37,14 @@ interface ProductSlideOverProps {
   categories: Category[]
   /** If provided, panel opens in edit mode pre-populated with this product */
   product?: ProductWithStock | null
+  /**
+   * Pre-fills the Barcode field on open — e.g. the code from a scan that
+   * didn't match any existing product on the POS or Intake screen. If the
+   * code turns out to match a product after all (typed by hand, or scanned
+   * again), the panel loads that product's details instead of staying in
+   * create mode. Ignored when `product` is also provided.
+   */
+  defaultBarcode?: string
   /**
    * Called right after a new product is successfully created (not on edit).
    * Lets an embedding form — e.g. Stock Intake — select the new product
@@ -93,11 +101,21 @@ export function ProductSlideOver({
   onOpenChange,
   categories,
   product,
+  defaultBarcode,
   onCreated,
 }: ProductSlideOverProps) {
   const router = useRouter()
   const { currency } = useCurrency()
-  const isEditing = !!product
+
+  // A barcode scanned/typed into the field below can match an existing
+  // product even when the panel was opened in "create" mode (e.g. from a
+  // POS/Intake scan that initially came up empty, or a cashier just typing
+  // a code they recognize). When that happens we load that product's
+  // details and submit treats it as an edit — matching the explicit
+  // `product` prop path used when opening the panel from the product list.
+  const [matchedProduct, setMatchedProduct] = React.useState<ProductWithStock | null>(null)
+  const activeProduct = product ?? matchedProduct
+  const isEditing = !!activeProduct
 
   // Category list (may grow via inline creation)
   const [localCategories, setLocalCategories] = React.useState<Category[]>(categories)
@@ -110,10 +128,13 @@ export function ProductSlideOver({
   const [sellingPrice, setSellingPrice] = React.useState('')
   const [reorderLevel, setReorderLevel] = React.useState('10')
   const [description, setDescription] = React.useState('')
+  const [barcode, setBarcode] = React.useState('')
+  const [checkingBarcode, setCheckingBarcode] = React.useState(false)
   const [errors, setErrors] = React.useState<FormErrors>({})
   const [loading, setLoading] = React.useState(false)
 
-  // Populate form when product changes (edit mode)
+  // Populate form when product changes (edit mode) or the panel is
+  // (re)opened for a fresh scan.
   React.useEffect(() => {
     if (product) {
       setName(product.name)
@@ -122,6 +143,7 @@ export function ProductSlideOver({
       setSellingPrice(product.selling_price)
       setReorderLevel(String(product.reorder_level))
       setDescription(product.description ?? '')
+      setBarcode(product.barcode ?? '')
     } else {
       setName('')
       setCategoryId('')
@@ -129,9 +151,56 @@ export function ProductSlideOver({
       setSellingPrice('')
       setReorderLevel('10')
       setDescription('')
+      setBarcode(defaultBarcode ?? '')
     }
+    setMatchedProduct(null)
     setErrors({})
-  }, [product, open])
+  }, [product, open, defaultBarcode])
+
+  // Barcode scan/typing lookup — only while the panel is in create mode.
+  // When editing an explicit product (opened via the product list), the
+  // barcode field just edits that product's own barcode directly.
+  React.useEffect(() => {
+    if (product) return
+    const trimmed = barcode.trim()
+
+    if (!trimmed) {
+      setMatchedProduct(null)
+      return
+    }
+
+    setCheckingBarcode(true)
+    const handle = setTimeout(async () => {
+      const result = await getProductByBarcode(trimmed)
+      if (result.success && result.data) {
+        setMatchedProduct(result.data)
+        setName(result.data.name)
+        setCategoryId(result.data.category_id ?? '')
+        setUnit(result.data.unit)
+        setSellingPrice(result.data.selling_price)
+        setReorderLevel(String(result.data.reorder_level))
+        setDescription(result.data.description ?? '')
+      } else {
+        setMatchedProduct((prev) => {
+          if (prev) {
+            // Was showing a matched product's details; the barcode has
+            // since changed to something that no longer matches, so go
+            // back to a blank slate rather than leaving stale data behind.
+            setName('')
+            setCategoryId('')
+            setUnit('piece')
+            setSellingPrice('')
+            setReorderLevel('10')
+            setDescription('')
+          }
+          return null
+        })
+      }
+      setCheckingBarcode(false)
+    }, 350)
+
+    return () => clearTimeout(handle)
+  }, [barcode, product])
 
   // ─── Validation ─────────────────────────────────────────────────────────────
 
@@ -165,11 +234,12 @@ export function ProductSlideOver({
       sellingPrice: parseFloat(sellingPrice),
       reorderLevel: parseInt(reorderLevel, 10),
       description: description.trim() || undefined,
+      barcode: barcode.trim() || undefined,
     }
 
     try {
-      if (isEditing && product) {
-        const result = await updateProduct(product.id, payload)
+      if (isEditing && activeProduct) {
+        const result = await updateProduct(activeProduct.id, payload)
         if (!result.success) {
           toast.error(result.error)
           return
@@ -211,6 +281,8 @@ export function ProductSlideOver({
         setSellingPrice('')
         setReorderLevel('10')
         setDescription('')
+        setBarcode('')
+        setMatchedProduct(null)
         setErrors({})
       } else {
         onOpenChange(false)
@@ -234,8 +306,8 @@ export function ProductSlideOver({
           <SheetBody>
             <div className="flex flex-col gap-5">
 
-              {/* SKU — edit mode only */}
-              {isEditing && product && (
+              {/* SKU — edit mode only (explicit edit, or a scanned barcode matched an existing product) */}
+              {isEditing && activeProduct && (
                 <Field label="SKU">
                   <div
                     className="flex items-center gap-2 h-10 rounded-lg px-3"
@@ -246,11 +318,50 @@ export function ProductSlideOver({
                   >
                     <Lock size={13} style={{ color: 'var(--text-muted)' }} />
                     <span className="mono text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                      {product.sku}
+                      {activeProduct.sku}
                     </span>
                   </div>
                 </Field>
               )}
+
+              {/* Barcode — scan directly into the field, or type one in.
+                  A USB/Bluetooth scanner acts like a keyboard: it types
+                  the digits and hits Enter, which just moves focus along
+                  like a normal Tab/Enter would. */}
+              <Field label="Barcode (optional)">
+                <div className="relative">
+                  <ScanBarcode
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                    style={{ color: 'var(--text-muted)' }}
+                  />
+                  <input
+                    type="text"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    onKeyDown={(e) => {
+                      // A scanner's trailing Enter would otherwise submit
+                      // the form mid-lookup — swallow it here.
+                      if (e.key === 'Enter') e.preventDefault()
+                    }}
+                    placeholder="Scan or type UPC/EAN"
+                    autoComplete="off"
+                    className={inputClass + ' pl-9'}
+                  />
+                  {checkingBarcode && (
+                    <Loader2
+                      size={14}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                  )}
+                </div>
+                {matchedProduct && !product && (
+                  <p className="mt-1 text-[11px]" style={{ color: 'var(--accent-primary)' }}>
+                    Matches an existing product — details loaded below.
+                  </p>
+                )}
+              </Field>
 
               {/* Product Name */}
               <Field label="Product Name *" error={errors.name}>

@@ -1,8 +1,9 @@
 'use client'
 
-import { Bell, LogOut } from 'lucide-react'
+import { Bell, LogOut, ScanBarcode } from 'lucide-react'
 import { useSession, signOut } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
+import * as React from 'react'
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return '?'
@@ -16,10 +17,59 @@ function getInitials(name: string | null | undefined): string {
 
 const ALERT_COUNT = 0
 
+// A hardware scanner "types" into whatever's focused, character by
+// character, only a few milliseconds apart — far faster than any human
+// keystroke cadence — then sends a trailing Enter. There's no browser API
+// that can detect a keyboard-wedge scanner being plugged in (WebHID
+// deliberately excludes anything that registers as a keyboard, for
+// security reasons), so this reads the timing between keystrokes instead
+// and treats a tight burst as "a scan just happened," the same heuristic
+// web POS systems commonly use. It reports recent scan-like activity, not
+// device presence.
+function useScannerActivity() {
+  const [active, setActive] = React.useState(false)
+  const lastTimeRef = React.useRef(0)
+  const burstRef = React.useRef(0)
+  const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      // Only plain character keys and the trailing Enter are part of a
+      // scan payload — modifier combos and navigation keys are noise here.
+      if (e.key.length !== 1 && e.key !== 'Enter') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      const now = performance.now()
+      const gap = now - lastTimeRef.current
+      lastTimeRef.current = now
+
+      burstRef.current = gap < 40 ? burstRef.current + 1 : 1
+
+      if (burstRef.current >= 5) {
+        setActive(true)
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+        resetTimerRef.current = setTimeout(() => {
+          setActive(false)
+          burstRef.current = 0
+        }, 3000)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    }
+  }, [])
+
+  return active
+}
+
 export function Topbar() {
   const { data: session } = useSession()
   const router = useRouter()
   const initials = getInitials(session?.user?.name)
+  const scannerActive = useScannerActivity()
 
   async function handleSignOut() {
     await signOut()
@@ -66,6 +116,45 @@ export function Topbar() {
 
       {/* Right: bell + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Scanner activity indicator */}
+        <div
+          role="status"
+          aria-label={scannerActive ? 'Barcode scan detected' : 'No recent barcode scan'}
+          title={
+            scannerActive
+              ? 'Barcode scan detected'
+              : 'No scan detected yet — lights up green briefly after a scan-like burst of keystrokes'
+          }
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 32,
+            height: 32,
+            borderRadius: 6,
+            color: scannerActive ? '#22c55e' : 'var(--text-muted)',
+            transition: 'color 200ms ease',
+          }}
+        >
+          <ScanBarcode size={17} strokeWidth={1.75} />
+          {scannerActive && (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: 5,
+                right: 5,
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: '#22c55e',
+                border: '1.5px solid var(--bg-nav)',
+              }}
+            />
+          )}
+        </div>
+
         {/* Alert bell */}
         <button
           type="button"
