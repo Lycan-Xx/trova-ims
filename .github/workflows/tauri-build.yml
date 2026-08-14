@@ -1,0 +1,94 @@
+name: Build Desktop App (Tauri)
+
+# Manual only — this does not run on every push. Trigger it from the
+# Actions tab ("Run workflow") whenever a desktop build is actually
+# wanted.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Build profile"
+        type: choice
+        options:
+          - release
+          - debug
+        default: release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            name: linux
+          - platform: windows-latest
+            name: windows
+          - platform: macos-latest
+            name: macos
+
+    runs-on: ${{ matrix.platform }}
+
+    # Placeholder secrets so `next build` doesn't fail at the app's own
+    # startup validation (lib/db/index.ts, lib/auth.ts). The build only
+    # needs *truthy* values here — pg.Pool doesn't connect until a query
+    # actually runs, and nothing runs a query at build time; the auth
+    # secret is likewise only used to sign sessions at runtime, not
+    # checked at build time. This has no effect on the packaged app's
+    # actual runtime database connection. Override with repo secrets of
+    # the same names if a build should embed different values.
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgres://build:build@localhost:5432/build' }}
+      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'build-time-placeholder-not-used-for-signing' }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # Tauri's Linux bundler needs these system libraries — not
+      # required on Windows/macOS runners, which ship what they need.
+      - name: Install Linux system dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build desktop app
+        # `tauri build` runs scripts/tauri-prebuild.mjs first (via
+        # beforeBuildCommand in tauri.conf.json), which builds the
+        # Next.js standalone server before Tauri packages it.
+        run: npx tauri build ${{ inputs.profile == 'debug' && '--debug' || '' }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trova-ims-${{ matrix.name }}-${{ inputs.profile }}
+          path: |
+            src-tauri/target/${{ inputs.profile }}/bundle/**
+          if-no-files-found: error
+          retention-days: 14
