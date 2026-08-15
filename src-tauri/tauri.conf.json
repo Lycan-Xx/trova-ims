@@ -5,14 +5,16 @@
   "identifier": "com.lycanforge.trova-ims",
   "build": {
     "frontendDist": "splash",
-    "beforeBuildCommand": "node ../scripts/tauri-prebuild.mjs"
+    "beforeBuildCommand": "node ../scripts/tauri-prebuild.mjs",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev -- --port 3000"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "Trova IMS",
-        "url": "splash.html",
+        "url": "index.html",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

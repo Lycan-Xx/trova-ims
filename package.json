@@ -11,6 +11,7 @@
     "test:json": "node scripts/run-tests.mjs --json",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
+    "desktop:dev:external": "tauri dev --no-dev-server",
     "desktop:build": "tauri build"
   },
   "dependencies": {

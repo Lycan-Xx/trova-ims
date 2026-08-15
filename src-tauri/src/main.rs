@@ -7,23 +7,35 @@
 // for an embedded local database (PGlite) so the app works fully offline
 // is tracked separately and doesn't change anything in this file.
 //
-// Known Phase-0 limitation: this spawns the system `node` binary rather
-// than a bundled one, so a machine running the packaged app currently
-// needs Node.js installed. Bundling a Node runtime binary as a proper
-// Tauri sidecar is the follow-up to remove that requirement.
+// Two different run modes, both handled here:
+//   - `tauri dev`: Tauri itself starts `npm run dev` (beforeDevCommand)
+//     and points the window at http://localhost:3000 (devUrl) — see
+//     tauri.conf.json. This file does nothing extra in that case; the
+//     `tauri::is_dev()` check below just skips the block meant for a
+//     packaged app.
+//   - `tauri build` / a packaged app: there's no dev server, so this
+//     spawns the bundled .next/standalone server itself and navigates
+//     the window to it once it's actually accepting connections.
+//
+// Known Phase-0 limitation: the packaged-app path spawns the system
+// `node` binary rather than a bundled one, so an installed build
+// currently needs Node.js present on that machine. Bundling a Node
+// runtime binary as a proper Tauri sidecar is the follow-up to remove
+// that requirement.
 
 use std::net::TcpStream;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, Url};
 
-/// Fixed local port for the bundled Next.js server. Chosen to be
-/// unlikely to collide with anything else already running on a
-/// cashier's machine.
+/// Fixed local port for the bundled Next.js server (packaged-app path
+/// only — `tauri dev` uses Next's own default port 3000 instead, set via
+/// `devUrl` in tauri.conf.json). Chosen to be unlikely to collide with
+/// anything else already running on a cashier's machine.
 const SERVER_PORT: u16 = 47821;
 
-fn spawn_local_server(resource_dir: &std::path::Path) -> std::io::Result<Child> {
+fn spawn_local_server(resource_dir: &std::path::Path) -> std::io::Result<std::process::Child> {
     let standalone_dir = resource_dir.join("standalone");
     let server_js = standalone_dir.join("server.js");
 
@@ -50,13 +62,27 @@ fn spawn_local_server(resource_dir: &std::path::Path) -> std::io::Result<Child> 
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Nothing to do in dev mode — Tauri already started the
+            // Next.js dev server and pointed the window at it.
+            if tauri::is_dev() {
+                return Ok(());
+            }
+
             let resource_dir = app
                 .path()
                 .resource_dir()
                 .expect("failed to resolve app resource directory");
 
-            let _server = spawn_local_server(&resource_dir)
-                .expect("failed to start the local Trova IMS server — is Node.js installed?");
+            if let Err(err) = spawn_local_server(&resource_dir) {
+                // Don't crash the whole app over this — log it and leave
+                // the splash screen up so the failure is at least visible
+                // rather than a silent exit.
+                eprintln!(
+                    "[trova-ims] Failed to start the local server ({err}). \
+                     Is Node.js installed on this machine?"
+                );
+                return Ok(());
+            }
 
             let handle = app.handle().clone();
             thread::spawn(move || {
