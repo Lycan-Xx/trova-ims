@@ -14,6 +14,12 @@ const PUBLIC_PREFIXES = [
 ]
 
 export function middleware(request: NextRequest) {
+  // In DESKTOP_MODE there's no session cookie — the app is single-user
+  // with no sign-in. Skip all auth gating so every route loads directly.
+  if (process.env.DESKTOP_MODE === 'true') {
+    return NextResponse.next()
+  }
+
   const { pathname } = request.nextUrl
 
   // Always allow public paths and root
