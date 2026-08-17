@@ -2,7 +2,8 @@ import { betterAuth } from 'better-auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
-import { pool, query } from '@/lib/db'
+import { pool, query, IS_DESKTOP } from '@/lib/db'
+import { DESKTOP_LOCAL_STORE_ID, DESKTOP_LOCAL_USER_ID } from '@/lib/db/desktop-init'
 import { handleFirstSignUp } from '@/lib/auth/first-run'
 import type { User, UserRole } from '@/lib/db/schema'
 
@@ -36,13 +37,17 @@ const trustedOrigins = Array.from(
   new Set(TRUSTED_ORIGINS_CONFIG.filter(Boolean) as string[])
 )
 
-if (!process.env.BETTER_AUTH_SECRET) {
+if (!process.env.BETTER_AUTH_SECRET && !IS_DESKTOP) {
   throw new Error(
     'BETTER_AUTH_SECRET is not set. Generate one with: openssl rand -base64 32'
   )
 }
 
-export const auth = betterAuth({
+// In desktop mode Better Auth is never initialised — the auth bypass below
+// short-circuits every requireStoreAccess() / requireOwner() call before
+// it reaches any Better Auth code, so this conditional stops the module
+// from blowing up on startup when the secret isn't set.
+export const auth = IS_DESKTOP ? null! : betterAuth({
   baseURL,
   trustedOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -89,11 +94,23 @@ export const auth = betterAuth({
 // ── App-level auth helpers ─────────────────────────────────────────────────────
 
 /**
- * Returns the app-level user row (with role + storeId) for the current
- * Better Auth session, keyed on the Better Auth user.id stored in our
- * users.auth_id column.
+ * In DESKTOP_MODE: returns the seeded local owner row directly — no session
+ * check, no network, no Better Auth. Every action file calls requireStoreAccess()
+ * or requireOwner() which both flow through here, so this single check is the
+ * only place that needs to know about desktop mode.
+ *
+ * In cloud mode: returns the app-level user row for the current Better Auth
+ * session, keyed on the Better Auth user.id stored in users.auth_id.
  */
 export const getCurrentUser = cache(async (): Promise<User | null> => {
+  if (IS_DESKTOP) {
+    const result = await query(
+      'SELECT * FROM users WHERE id = $1 AND is_active = true LIMIT 1',
+      [DESKTOP_LOCAL_USER_ID],
+    )
+    return (result.rows[0] as User) ?? null
+  }
+
   try {
     const session = await auth.api.getSession({ headers: await headers() })
     if (!session?.user?.id) return null
@@ -117,6 +134,9 @@ export async function requireRole(allowedRoles: UserRole[]): Promise<User> {
 }
 
 export async function requireOwner(): Promise<User> {
+  // Desktop owner has full access — role check still runs so nothing
+  // silently bypasses role-gated paths, but the seeded user is 'owner'
+  // so it always passes.
   return requireRole(['owner'])
 }
 

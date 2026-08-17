@@ -35,7 +35,7 @@ use tauri::{Manager, Url};
 /// anything else already running on a cashier's machine.
 const SERVER_PORT: u16 = 47821;
 
-fn spawn_local_server(resource_dir: &std::path::Path) -> std::io::Result<std::process::Child> {
+fn spawn_local_server(resource_dir: &std::path::Path, data_dir: &std::path::Path) -> std::io::Result<std::process::Child> {
     let standalone_dir = resource_dir.join("standalone");
     let server_js = standalone_dir.join("server.js");
 
@@ -44,6 +44,19 @@ fn spawn_local_server(resource_dir: &std::path::Path) -> std::io::Result<std::pr
         .current_dir(&standalone_dir)
         .env("PORT", SERVER_PORT.to_string())
         .env("HOSTNAME", "127.0.0.1")
+        // Tell the Next.js server it's running inside the Tauri desktop
+        // shell — this bypasses Better Auth and routes all DB queries to
+        // the local PGlite database file instead of Aurora.
+        .env("DESKTOP_MODE", "true")
+        // PGlite writes the database file here. Tauri resolves the correct
+        // OS-specific app data directory (AppData/Roaming on Windows,
+        // ~/.local/share on Linux, ~/Library/Application Support on macOS)
+        // and passes it through so the server knows where to open the file.
+        .env("TROVA_DATA_DIR", data_dir)
+        // Satisfy the Next.js server's startup check without leaking a
+        // real secret — in DESKTOP_MODE the auth module never initialises
+        // Better Auth so this value is never actually used for signing.
+        .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
@@ -73,7 +86,17 @@ fn main() {
                 .resource_dir()
                 .expect("failed to resolve app resource directory");
 
-            if let Err(err) = spawn_local_server(&resource_dir) {
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app data directory");
+
+            // Make sure the data directory exists before the server starts —
+            // PGlite will try to create the .db file there immediately.
+            std::fs::create_dir_all(&data_dir)
+                .expect("failed to create app data directory");
+
+            if let Err(err) = spawn_local_server(&resource_dir, &data_dir) {
                 // Don't crash the whole app over this — log it and leave
                 // the splash screen up so the failure is at least visible
                 // rather than a silent exit.
