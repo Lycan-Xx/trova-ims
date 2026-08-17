@@ -6,6 +6,7 @@ Trova is a full-stack inventory management application built for small-to-medium
 
 ---
 
+
 ## Tech Stack
 
 | Layer       | Technology                                          |
