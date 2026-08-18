@@ -22,10 +22,16 @@ jobs:
         include:
           - platform: ubuntu-22.04
             name: linux
+            # AppImage requires FUSE which GitHub runners don't provide.
+            # Ship .deb (Ubuntu/Debian) and .rpm (Fedora/RHEL) instead —
+            # both work reliably on CI without any extra setup.
+            bundles: deb,rpm
           - platform: windows-latest
             name: windows
+            bundles: msi,nsis
           - platform: macos-latest
             name: macos
+            bundles: dmg
 
     runs-on: ${{ matrix.platform }}
 
@@ -58,8 +64,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      # Tauri's Linux bundler needs these system libraries — not
-      # required on Windows/macOS runners, which ship what they need.
+      # Tauri's Linux bundler needs these system libraries.
       - name: Install Linux system dependencies
         if: matrix.name == 'linux'
         run: |
@@ -73,10 +78,7 @@ jobs:
             build-essential \
             curl \
             wget \
-            file \
-            squashfs-tools \
-            fuse \
-            libfuse2
+            file
 
       - name: Install npm dependencies
         run: npm ci
@@ -85,16 +87,12 @@ jobs:
         # `tauri build` runs scripts/tauri-prebuild.mjs first (via
         # beforeBuildCommand in tauri.conf.json), which builds the
         # Next.js standalone server before Tauri packages it.
-        #
-        # Linux AppImage bundling requires APPIMAGE_EXTRACT_AND_RUN=1 on
-        # GitHub runners (no FUSE device available) and a virtual display
-        # for linuxdeploy's GTK introspection step.
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          DISPLAY: ":99"
-        run: |
-          ${{ matrix.name == 'linux' && 'Xvfb :99 -screen 0 1024x768x24 &' || 'echo "No virtual display needed"' }}
-          npx tauri build ${{ inputs.profile == 'debug' && '--debug' || '' }}
+        # --bundles restricts output to the formats that work on each
+        # runner without extra setup (no AppImage on Linux CI).
+        run: >
+          npx tauri build
+          ${{ inputs.profile == 'debug' && '--debug' || '' }}
+          --bundles ${{ matrix.bundles }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
