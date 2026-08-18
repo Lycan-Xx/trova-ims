@@ -1,27 +1,13 @@
 // Trova IMS desktop shell.
 //
-// This is the Phase-0 packaging spike: it proves the Tauri build pipeline
-// end-to-end (icons, installers, per-OS CI) by running the *existing*
-// Next.js app locally instead of loading a static bundle. The app still
-// talks to Aurora Postgres over the network at this stage — swapping that
-// for an embedded local database (PGlite) so the app works fully offline
-// is tracked separately and doesn't change anything in this file.
+// Two run modes:
+//   - `tauri dev`: Tauri starts `npm run dev` and points the window at
+//     http://localhost:3000 directly. This file does nothing extra.
+//   - Packaged app: spawns the bundled .next/standalone server, polls
+//     until it accepts connections, then navigates away from the splash.
 //
-// Two different run modes, both handled here:
-//   - `tauri dev`: Tauri itself starts `npm run dev` (beforeDevCommand)
-//     and points the window at http://localhost:3000 (devUrl) — see
-//     tauri.conf.json. This file does nothing extra in that case; the
-//     `tauri::is_dev()` check below just skips the block meant for a
-//     packaged app.
-//   - `tauri build` / a packaged app: there's no dev server, so this
-//     spawns the bundled .next/standalone server itself and navigates
-//     the window to it once it's actually accepting connections.
-//
-// Known Phase-0 limitation: the packaged-app path spawns the system
-// `node` binary rather than a bundled one, so an installed build
-// currently needs Node.js present on that machine. Bundling a Node
-// runtime binary as a proper Tauri sidecar is the follow-up to remove
-// that requirement.
+// Phase-0 limitation: requires a system Node.js install. Bundling a
+// Node runtime as a proper Tauri sidecar is tracked for a later phase.
 
 use std::net::TcpStream;
 use std::process::{Command, Stdio};
@@ -30,38 +16,73 @@ use std::time::Duration;
 use tauri::{Manager, Url};
 
 /// Fixed local port for the bundled Next.js server (packaged-app path
-/// only — `tauri dev` uses Next's own default port 3000 instead, set via
-/// `devUrl` in tauri.conf.json). Chosen to be unlikely to collide with
-/// anything else already running on a cashier's machine.
+/// only — dev mode uses port 3000 via devUrl in tauri.conf.json).
 const SERVER_PORT: u16 = 47821;
 
-fn spawn_local_server(resource_dir: &std::path::Path, data_dir: &std::path::Path) -> std::io::Result<std::process::Child> {
+/// Locate the system `node` binary by path rather than relying on bare
+/// name resolution.
+///
+/// Windows GUI apps launched at boot don't always inherit the same PATH
+/// that the interactive shell has, so `Command::new("node")` can fail
+/// even when Node is installed and visible in PowerShell. Querying
+/// `where.exe` / `which` uses the system search path rather than the
+/// inherited process PATH, so it finds Node regardless of how the app
+/// was started. Falls back to the bare name on failure so the OS error
+/// message is still readable.
+fn find_node() -> String {
+    #[cfg(target_os = "windows")]
+    let (search_bin, search_arg) = ("where.exe", "node");
+    #[cfg(not(target_os = "windows"))]
+    let (search_bin, search_arg) = ("which", "node");
+
+    Command::new(search_bin)
+        .arg(search_arg)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok().map(|s| {
+                    // `where.exe` may return multiple lines — take first only.
+                    s.lines().next().unwrap_or("node").trim().to_string()
+                })
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "node".to_string())
+}
+
+fn spawn_local_server(
+    resource_dir: &std::path::Path,
+    data_dir: &std::path::Path,
+) -> std::io::Result<std::process::Child> {
     let standalone_dir = resource_dir.join("standalone");
     let server_js = standalone_dir.join("server.js");
+    let node_bin = find_node();
 
-    let mut cmd = Command::new("node");
+    eprintln!("[trova-ims] node binary:   {node_bin}");
+    eprintln!("[trova-ims] server script: {}", server_js.display());
+    eprintln!("[trova-ims] data dir:      {}", data_dir.display());
+
+    let mut cmd = Command::new(&node_bin);
     cmd.arg(&server_js)
         .current_dir(&standalone_dir)
         .env("PORT", SERVER_PORT.to_string())
         .env("HOSTNAME", "127.0.0.1")
-        // Tell the Next.js server it's running inside the Tauri desktop
-        // shell — this bypasses Better Auth and routes all DB queries to
-        // the local PGlite database file instead of Aurora.
+        // Offline mode — bypasses Better Auth, routes queries to PGlite.
         .env("DESKTOP_MODE", "true")
-        // PGlite writes the database file here. Tauri resolves the correct
-        // OS-specific app data directory (AppData/Roaming on Windows,
-        // ~/.local/share on Linux, ~/Library/Application Support on macOS)
-        // and passes it through so the server knows where to open the file.
+        // PGlite creates trova.db under this directory.
         .env("TROVA_DATA_DIR", data_dir)
-        // Satisfy the Next.js server's startup check without leaking a
-        // real secret — in DESKTOP_MODE the auth module never initialises
-        // Better Auth so this value is never actually used for signing.
+        // Satisfies the startup env check; never used at runtime in DESKTOP_MODE.
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        // Forward PATH so Node's own child-process spawns can find system tools.
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        // Keep stdout/stderr piped (not null) so failures are visible in
+        // the OS console / event log rather than silently disappearing.
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    // Prevent a console window from flashing on Windows when the child
-    // process starts.
+    // Suppress the extra console window on Windows.
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -75,8 +96,8 @@ fn spawn_local_server(resource_dir: &std::path::Path, data_dir: &std::path::Path
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            // Nothing to do in dev mode — Tauri already started the
-            // Next.js dev server and pointed the window at it.
+            // Dev mode: Tauri already started next dev and pointed the window
+            // at localhost:3000. Nothing to do here.
             if tauri::is_dev() {
                 return Ok(());
             }
@@ -84,39 +105,43 @@ fn main() {
             let resource_dir = app
                 .path()
                 .resource_dir()
-                .expect("failed to resolve app resource directory");
+                .expect("failed to resolve resource directory");
 
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("failed to resolve app data directory");
 
-            // Make sure the data directory exists before the server starts —
-            // PGlite will try to create the .db file there immediately.
             std::fs::create_dir_all(&data_dir)
                 .expect("failed to create app data directory");
 
-            if let Err(err) = spawn_local_server(&resource_dir, &data_dir) {
-                // Don't crash the whole app over this — log it and leave
-                // the splash screen up so the failure is at least visible
-                // rather than a silent exit.
-                eprintln!(
-                    "[trova-ims] Failed to start the local server ({err}). \
-                     Is Node.js installed on this machine?"
-                );
-                return Ok(());
+            match spawn_local_server(&resource_dir, &data_dir) {
+                Err(err) => {
+                    eprintln!(
+                        "[trova-ims] Failed to start local server: {err}\n\
+                         Is Node.js installed and on the system PATH?"
+                    );
+                    return Ok(());
+                }
+                Ok(_child) => {
+                    // Child is intentionally not stored — it outlives setup()
+                    // and will be cleaned up when the Tauri process exits.
+                }
             }
 
             let handle = app.handle().clone();
             thread::spawn(move || {
-                // Poll until the local server is actually accepting
-                // connections before navigating the window to it — the
-                // splash screen stays up until then.
-                for _ in 0..200 {
+                // Poll up to 30 s (200 × 150 ms) for the server to become ready.
+                for attempt in 0..200 {
                     if TcpStream::connect(("127.0.0.1", SERVER_PORT)).is_ok() {
+                        eprintln!(
+                            "[trova-ims] Server ready after ~{}ms — navigating window.",
+                            attempt * 150
+                        );
                         if let Some(window) = handle.get_webview_window("main") {
-                            let url = Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
-                                .expect("invalid local server URL");
+                            let url =
+                                Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
+                                    .expect("invalid local server URL");
                             let _ = window.navigate(url);
                         }
                         return;
@@ -124,12 +149,13 @@ fn main() {
                     thread::sleep(Duration::from_millis(150));
                 }
                 eprintln!(
-                    "[trova-ims] Local server did not become ready on port {SERVER_PORT} in time."
+                    "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
+                     Check that Node.js is installed and that no other process is using that port."
                 );
             });
 
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running the Trova IMS desktop app");
+        .expect("error while running Trova IMS");
 }
