@@ -52,13 +52,39 @@ fn find_node() -> String {
         .unwrap_or_else(|| "node".to_string())
 }
 
+/// Strip the Windows extended-length path prefix (`\\?\`) from a path
+/// before handing it to Node.js.
+///
+/// Tauri's `resource_dir()` / `app_data_dir()` return verbatim UNC paths
+/// (prefixed with `\\?\`) on Windows when the install path is long or
+/// contains spaces — e.g. `C:\Program Files\Trova IMS`. Node.js does not
+/// handle the `\\?\` prefix and fails to open the file, so the server
+/// never starts and the readiness poll times out. The prefix is only
+/// meaningful to the Win32 API (bypasses MAX_PATH) and is not needed for
+/// paths we construct ourselves here.
+#[cfg(target_os = "windows")]
+fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
+    let s = path.to_string_lossy();
+    if s.starts_with(r"\\?\") {
+        std::path::PathBuf::from(&s[4..])
+    } else {
+        path.to_path_buf()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
+    path.to_path_buf()
+}
+
 fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
 ) -> std::io::Result<std::process::Child> {
-    let standalone_dir = resource_dir.join("standalone");
-    let server_js = standalone_dir.join("server.js");
-    let node_bin = find_node();
+    let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
+    let server_js     = standalone_dir.join("server.js");
+    let data_dir      = strip_verbatim_prefix(data_dir);
+    let node_bin      = find_node();
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
@@ -72,7 +98,7 @@ fn spawn_local_server(
         // Offline mode — bypasses Better Auth, routes queries to PGlite.
         .env("DESKTOP_MODE", "true")
         // PGlite creates trova.db under this directory.
-        .env("TROVA_DATA_DIR", data_dir)
+        .env("TROVA_DATA_DIR", &data_dir)
         // Satisfies the startup env check; never used at runtime in DESKTOP_MODE.
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
         // Forward PATH so Node's own child-process spawns can find system tools.
