@@ -1,5 +1,7 @@
 # Trova Inventory Management System
 
+[![Build Desktop App (Tauri)](https://github.com/Lycan-Xx/trova-ims/actions/workflows/tauri-build.yml/badge.svg)](https://github.com/Lycan-Xx/trova-ims/actions/workflows/tauri-build.yml)
+
 ![Trova Dashboard](./public/images/auth-page.png)
 
 Trova is a full-stack inventory management application built for small-to-medium retail stores. It handles the complete retail lifecycle: supplier intake, product cataloguing, point-of-sale, vendor relationships, expiry/stock alerts, and owner-level analytics. The entire system is multi-tenant by design—each store is isolated, and every user belongs to exactly one store with a defined role. Multi-currency support enables seamless operations across different markets with real-time currency formatting.
