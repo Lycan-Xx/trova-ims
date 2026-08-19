@@ -3,32 +3,25 @@
 // Two run modes:
 //   - `tauri dev`: Tauri starts `npm run dev` and points the window at
 //     http://localhost:3000 directly. This file does nothing extra.
-//   - Packaged app: spawns the bundled .next/standalone server, polls
+//   - Packaged app: spawns the bundled .next/standalone/server.js, polls
 //     until it accepts connections, then navigates away from the splash.
-//
-// Phase-0 limitation: requires a system Node.js install. Bundling a
-// Node runtime as a proper Tauri sidecar is tracked for a later phase.
 
+use std::fs::OpenOptions;
 use std::net::TcpStream;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, Url};
 
-/// Fixed local port for the bundled Next.js server (packaged-app path
-/// only — dev mode uses port 3000 via devUrl in tauri.conf.json).
+/// Fixed local port for the bundled Next.js server.
 const SERVER_PORT: u16 = 47821;
 
-/// Locate the system `node` binary by path rather than relying on bare
-/// name resolution.
+/// Locate the system `node` binary.
 ///
-/// Windows GUI apps launched at boot don't always inherit the same PATH
-/// that the interactive shell has, so `Command::new("node")` can fail
-/// even when Node is installed and visible in PowerShell. Querying
-/// `where.exe` / `which` uses the system search path rather than the
-/// inherited process PATH, so it finds Node regardless of how the app
-/// was started. Falls back to the bare name on failure so the OS error
-/// message is still readable.
+/// Windows packaged apps don't reliably inherit the interactive shell's
+/// PATH. `where.exe` / `which` query the system search path independently
+/// of the inherited process PATH, so they find Node even when a bare
+/// `Command::new("node")` would fail.
 fn find_node() -> String {
     #[cfg(target_os = "windows")]
     let (search_bin, search_arg) = ("where.exe", "node");
@@ -42,7 +35,6 @@ fn find_node() -> String {
         .and_then(|o| {
             if o.status.success() {
                 String::from_utf8(o.stdout).ok().map(|s| {
-                    // `where.exe` may return multiple lines — take first only.
                     s.lines().next().unwrap_or("node").trim().to_string()
                 })
             } else {
@@ -52,63 +44,70 @@ fn find_node() -> String {
         .unwrap_or_else(|| "node".to_string())
 }
 
-/// Strip the Windows extended-length path prefix (`\\?\`) from a path
-/// before handing it to Node.js.
+/// Strip the Windows `\\?\` verbatim UNC prefix from a path.
 ///
-/// Tauri's `resource_dir()` / `app_data_dir()` return verbatim UNC paths
-/// (prefixed with `\\?\`) on Windows when the install path is long or
-/// contains spaces — e.g. `C:\Program Files\Trova IMS`. Node.js does not
-/// handle the `\\?\` prefix and fails to open the file, so the server
-/// never starts and the readiness poll times out. The prefix is only
-/// meaningful to the Win32 API (bypasses MAX_PATH) and is not needed for
-/// paths we construct ourselves here.
-#[cfg(target_os = "windows")]
+/// Tauri's path APIs return verbatim UNC paths on Windows when the install
+/// path contains spaces (e.g. `C:\Program Files\Trova IMS`). Node.js does
+/// not handle this prefix and fails to open files, so we strip it before
+/// passing paths to Node.
 fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
-    let s = path.to_string_lossy();
-    if s.starts_with(r"\\?\") {
-        std::path::PathBuf::from(&s[4..])
-    } else {
-        path.to_path_buf()
+    #[cfg(target_os = "windows")]
+    {
+        let s = path.to_string_lossy();
+        if s.starts_with(r"\\?\") {
+            return std::path::PathBuf::from(&s[4..]);
+        }
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
     path.to_path_buf()
 }
 
 fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
+    log_path: &std::path::Path,
 ) -> std::io::Result<std::process::Child> {
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
-    let server_js     = standalone_dir.join("server.js");
-    let data_dir      = strip_verbatim_prefix(data_dir);
-    let node_bin      = find_node();
+    let server_js      = standalone_dir.join("server.js");
+    let data_dir       = strip_verbatim_prefix(data_dir);
+    let node_bin       = find_node();
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
     eprintln!("[trova-ims] data dir:      {}", data_dir.display());
+    eprintln!("[trova-ims] server log:    {}", log_path.display());
+
+    // Verify server.js actually exists before trying to spawn it — gives a
+    // clear error instead of a cryptic "process exited immediately" timeout.
+    if !server_js.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "server.js not found at {}. The standalone bundle may be missing from the installer.",
+                server_js.display()
+            ),
+        ));
+    }
+
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
+    let log_clone = log_file.try_clone()?;
 
     let mut cmd = Command::new(&node_bin);
     cmd.arg(&server_js)
         .current_dir(&standalone_dir)
-        .env("PORT", SERVER_PORT.to_string())
-        .env("HOSTNAME", "127.0.0.1")
-        // Offline mode — bypasses Better Auth, routes queries to PGlite.
-        .env("DESKTOP_MODE", "true")
-        // PGlite creates trova.db under this directory.
-        .env("TROVA_DATA_DIR", &data_dir)
-        // Satisfies the startup env check; never used at runtime in DESKTOP_MODE.
+        .env("PORT",               SERVER_PORT.to_string())
+        .env("HOSTNAME",           "127.0.0.1")
+        .env("DESKTOP_MODE",       "true")
+        .env("TROVA_DATA_DIR",     &data_dir)
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
-        // Forward PATH so Node's own child-process spawns can find system tools.
-        .env("PATH", std::env::var("PATH").unwrap_or_default())
-        // Keep stdout/stderr piped (not null) so failures are visible in
-        // the OS console / event log rather than silently disappearing.
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .env("PATH",               std::env::var("PATH").unwrap_or_default())
+        // Write server output to the log file so startup errors are
+        // visible rather than silently disappearing.
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_clone));
 
-    // Suppress the extra console window on Windows.
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -122,8 +121,6 @@ fn spawn_local_server(
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            // Dev mode: Tauri already started next dev and pointed the window
-            // at localhost:3000. Nothing to do here.
             if tauri::is_dev() {
                 return Ok(());
             }
@@ -141,27 +138,22 @@ fn main() {
             std::fs::create_dir_all(&data_dir)
                 .expect("failed to create app data directory");
 
-            match spawn_local_server(&resource_dir, &data_dir) {
+            let log_path = data_dir.join("server.log");
+
+            match spawn_local_server(&resource_dir, &data_dir, &log_path) {
                 Err(err) => {
-                    eprintln!(
-                        "[trova-ims] Failed to start local server: {err}\n\
-                         Is Node.js installed and on the system PATH?"
-                    );
+                    eprintln!("[trova-ims] Failed to start local server: {err}");
                     return Ok(());
                 }
-                Ok(_child) => {
-                    // Child is intentionally not stored — it outlives setup()
-                    // and will be cleaned up when the Tauri process exits.
-                }
+                Ok(_child) => {}
             }
 
             let handle = app.handle().clone();
             thread::spawn(move || {
-                // Poll up to 30 s (200 × 150 ms) for the server to become ready.
                 for attempt in 0..200 {
                     if TcpStream::connect(("127.0.0.1", SERVER_PORT)).is_ok() {
                         eprintln!(
-                            "[trova-ims] Server ready after ~{}ms — navigating window.",
+                            "[trova-ims] Server ready after ~{}ms.",
                             attempt * 150
                         );
                         if let Some(window) = handle.get_webview_window("main") {
@@ -176,7 +168,8 @@ fn main() {
                 }
                 eprintln!(
                     "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
-                     Check that Node.js is installed and that no other process is using that port."
+                     Check the server log at the app data directory for the exact error.\n\
+                     Is Node.js installed?"
                 );
             });
 
