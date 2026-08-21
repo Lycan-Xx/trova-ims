@@ -1,8 +1,8 @@
-import { Pool, type ClientBase } from 'pg'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { Signer } from '@aws-sdk/rds-signer'
-import { awsCredentialsProvider } from '@vercel/functions/oidc'
-import { attachDatabasePool } from '@vercel/functions'
+// Type-only import — no runtime cost, never bundled by Turbopack as an
+// external module reference. The actual `pg` package is loaded below
+// via require() only when IS_DESKTOP is false, keeping it out of the
+// desktop module graph entirely.
+import type { Pool as PgPool, ClientBase } from 'pg'
 import * as schema from './schema'
 import { desktopQuery } from './desktop-init'
 
@@ -18,12 +18,25 @@ import { desktopQuery } from './desktop-init'
 export const IS_DESKTOP = process.env.DESKTOP_MODE === 'true'
 
 // ── Cloud pool (web / Vercel) ─────────────────────────────────────────────────
+// All three packages below are loaded via require() rather than top-level
+// import so they are completely absent from the desktop module graph.
+// Turbopack would otherwise mangle their names when bundling (e.g.
+// "pg-587764f78a6c7a9c"), causing module-not-found errors at runtime.
 
-let pool: Pool
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+let pool: PgPool = null as unknown as PgPool
 
 if (!IS_DESKTOP) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool } = require('pg') as { Pool: typeof PgPool }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Signer } = require('@aws-sdk/rds-signer') as typeof import('@aws-sdk/rds-signer')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { awsCredentialsProvider } = require('@vercel/functions/oidc') as typeof import('@vercel/functions/oidc')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { attachDatabasePool } = require('@vercel/functions') as typeof import('@vercel/functions')
+
   if (process.env.DATABASE_URL) {
-    // Direct PostgreSQL connection string (local development or standard deployment)
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
@@ -33,7 +46,6 @@ if (!IS_DESKTOP) {
       allowExitOnIdle: false,
     })
   } else if (process.env.PGHOST && process.env.AWS_ROLE_ARN && process.env.AWS_REGION) {
-    // AWS RDS Signer (Vercel deployment with Aurora)
     const signer = new Signer({
       credentials: awsCredentialsProvider({
         roleArn: process.env.AWS_ROLE_ARN!,
@@ -63,16 +75,19 @@ if (!IS_DESKTOP) {
     )
   }
 
-  // Log and discard broken connections so the pool can replace them cleanly
-  pool!.on('error', (err) => {
+  pool.on('error', (err) => {
     console.error('[db] Unexpected pool client error — connection will be discarded:', err.message)
   })
 
-  attachDatabasePool(pool!)
+  attachDatabasePool(pool)
 }
 
 export { pool }
-export const db = IS_DESKTOP ? null : drizzle(pool!, { schema })
+export const db = IS_DESKTOP
+  ? null
+  // drizzle-orm/node-postgres is cloud-only — only initialised when pool exists.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  : (require('drizzle-orm/node-postgres') as typeof import('drizzle-orm/node-postgres')).drizzle(pool!, { schema })
 
 // ── Unified query() ───────────────────────────────────────────────────────────
 // All app/actions/* files call this — the routing to cloud vs. local is
