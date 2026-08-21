@@ -16,6 +16,8 @@ const PUBLIC_PREFIXES = [
 export function middleware(request: NextRequest) {
   // In DESKTOP_MODE there's no session cookie — the app is single-user
   // with no sign-in. Skip all auth gating so every route loads directly.
+  // Use runtime env check instead of IS_DESKTOP constant to avoid
+  // importing lib/db which contains Node.js APIs incompatible with Edge Runtime.
   if (process.env.DESKTOP_MODE === 'true') {
     return NextResponse.next()
   }

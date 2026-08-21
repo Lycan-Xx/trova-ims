@@ -35,6 +35,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+
+  // Expose DESKTOP_MODE to the browser so client components can detect
+  // Tauri desktop mode at runtime. The Tauri shell sets this env var
+  // when spawning the Next.js server. Without this, Next.js inlines
+  // process.env.DESKTOP_MODE at build time (undefined) instead of
+  // reading it at runtime.
+  env: {
+    DESKTOP_MODE: process.env.DESKTOP_MODE,
+  },
 }
 
 export default nextConfig
