@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.1...v0.1.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* desktop lands on dashboard + resolve pg Turbopack bundling crash ([b92bec2](https://github.com/Lycan-Xx/trova-ims/commit/b92bec2350019a2db5483ecd9fbc69c7553b14f4))
+* Ubuntu apt-get update hang (bad default mirror) + job timeout ([1cfb2a6](https://github.com/Lycan-Xx/trova-ims/commit/1cfb2a66fb8409864c6db9dbac512a31b1dbde3d))
+* Ubuntu apt-get update hang (bad mirror) + 45min job timeout ([2f99a39](https://github.com/Lycan-Xx/trova-ims/commit/2f99a3962068e2e691fbdf7b18cab18cd4282ef9))
+
 ## [0.1.1](https://github.com/Lycan-Xx/trova-ims/compare/0.1.0...v0.1.1) (2026-08-19)
 
 
