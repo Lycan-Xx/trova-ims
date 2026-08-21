@@ -34,6 +34,11 @@ jobs:
             bundles: dmg
 
     runs-on: ${{ matrix.platform }}
+    # Safety net: Rust release builds + Tauri bundling normally finish
+    # well under this on a cold cache. If a step ever hangs silently
+    # (as apt-get did against the azure mirror), this caps the damage
+    # at 45 minutes of runner time instead of hours.
+    timeout-minutes: 45
 
     # Placeholder secrets so `next build` doesn't fail at the app's own
     # startup validation (lib/db/index.ts, lib/auth.ts). The build only
@@ -68,6 +73,11 @@ jobs:
       - name: Install Linux system dependencies
         if: matrix.name == 'linux'
         run: |
+          # The ubuntu-22.04 runner defaults to the azure.archive.ubuntu.com
+          # mirror, which is unreliable and can hang `apt-get update` for
+          # hours on silent timeouts instead of failing fast. Point at the
+          # main Ubuntu archive directly before updating.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \

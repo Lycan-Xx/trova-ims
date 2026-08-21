@@ -53,6 +53,7 @@ jobs:
             bundles: dmg
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
 
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgres://build:build@localhost:5432/build' }}
@@ -78,6 +79,9 @@ jobs:
       - name: Install Linux system dependencies
         if: matrix.name == 'linux'
         run: |
+          # See .github/workflows/tauri-build.yml for why this is here —
+          # the default azure mirror can hang apt-get update for hours.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
