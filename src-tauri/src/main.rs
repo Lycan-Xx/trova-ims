@@ -14,6 +14,12 @@ use std::time::Duration;
 use tauri::{Manager, Url};
 
 /// Fixed local port for the bundled Next.js server.
+///
+/// IMPORTANT: this must stay in sync with the `remote.urls` entry in
+/// src-tauri/capabilities/default.json — Tauri only grants IPC access
+/// (window.isTauri, invoke(), etc.) to origins explicitly listed there.
+/// If this port changes, that file needs the matching update or the
+/// frontend's Tauri detection silently breaks.
 const SERVER_PORT: u16 = 47821;
 
 /// Locate the system `node` binary.
