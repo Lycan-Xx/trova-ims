@@ -1,13 +1,21 @@
 import { auth } from '@/lib/auth'
 import { toNextJsHandler } from 'better-auth/next-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { IS_DESKTOP } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
+
+const desktopHandler = async () => {
+  return NextResponse.redirect(new URL('/dashboard', 'http://localhost'))
+}
 
 const { GET: betterAuthGET, POST: betterAuthPOST } = toNextJsHandler(auth.handler)
 
 // Wrap handlers to provide better error messages
 export async function GET(request: NextRequest) {
+  if (IS_DESKTOP) {
+    return desktopHandler()
+  }
   try {
     return await betterAuthGET(request)
   } catch (err) {
@@ -33,6 +41,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (IS_DESKTOP) {
+    return desktopHandler()
+  }
   try {
     return await betterAuthPOST(request)
   } catch (err) {

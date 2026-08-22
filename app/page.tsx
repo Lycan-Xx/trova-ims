@@ -12,34 +12,9 @@ import Cta from '@/app/landing/cta'
 import Footer from '@/app/landing/footer'
 
 export default function RootPage() {
-  const [isDesktop, setIsDesktop] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    // Method 1: Check for Tauri global object
-    const isTauriAvailable = typeof window !== 'undefined' && 
-      (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' || 
-       typeof (window as any).__TAURI__ !== 'undefined')
-    
-    if (isTauriAvailable) {
-      // Tauri is available, redirect to dashboard
-      setIsDesktop(true)
-    } else {
-      // Tauri is not available (web browser)
-      setIsDesktop(false)
-    }
-  }, [])
-
-  // Handle the redirect when we confirm it's desktop
-  useEffect(() => {
-    if (isDesktop === true) {
-      window.location.href = '/dashboard'
-    }
-  }, [isDesktop])
-
-  // Still detecting — show nothing to avoid flash
-  if (isDesktop === null) {
-    return null
-  }
+  // Landing page for web browsers. Server-side routing now owns the
+  // desktop redirect when DESKTOP_MODE=true, so the client no longer
+  // attempts to detect Tauri and perform a client-side redirect.
 
   // Web: show marketing page
   return (

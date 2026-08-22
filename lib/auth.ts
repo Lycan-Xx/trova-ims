@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
+import { NextResponse } from 'next/server'
 import { pool, query, IS_DESKTOP } from '@/lib/db'
 import { DESKTOP_LOCAL_STORE_ID, DESKTOP_LOCAL_USER_ID } from '@/lib/db/desktop-init'
 import { handleFirstSignUp } from '@/lib/auth/first-run'
@@ -45,51 +46,62 @@ if (!process.env.BETTER_AUTH_SECRET && !IS_DESKTOP) {
 
 // In desktop mode Better Auth is never initialised — the auth bypass below
 // short-circuits every requireStoreAccess() / requireOwner() call before
-// it reaches any Better Auth code, so this conditional stops the module
-// from blowing up on startup when the secret isn't set.
-export const auth = IS_DESKTOP ? null! : betterAuth({
-  baseURL,
-  trustedOrigins,
-  secret: process.env.BETTER_AUTH_SECRET,
-  // Reuse the Aurora IAM-authenticated pool from lib/db — no DATABASE_URL needed
-  database: pool,
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: false,
-    minPasswordLength: 8,
-  },
-  session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days
-    updateAge: 60 * 60 * 24, // Update session age every 24 hours
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // 5 minutes
-    },
-  },
-  advanced: {
-    disableCSRFCheck: false,
-    defaultCookieAttributes: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
-      path: '/',
-    },
-  },
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          try {
-            await handleFirstSignUp(user.id, user.name || '', user.email || '')
-          } catch (err) {
-            console.error('[better-auth] handleFirstSignUp failed:', err)
-            // Don't throw - let the user be created even if onboarding fails
-          }
+// it reaches any Better Auth code, so this fallback keeps all auth accessors
+// defined without dereferencing null while desktop mode routes all auth
+// traffic back to the dashboard.
+export const auth = IS_DESKTOP
+  ? {
+      api: {
+        getSession: async () => null,
+      },
+      handler: {
+        GET: async () => NextResponse.json({ error: 'Desktop auth is disabled.' }, { status: 404 }),
+        POST: async () => NextResponse.json({ error: 'Desktop auth is disabled.' }, { status: 404 }),
+      },
+    }
+  : betterAuth({
+      baseURL,
+      trustedOrigins,
+      secret: process.env.BETTER_AUTH_SECRET,
+      // Reuse the Aurora IAM-authenticated pool from lib/db — no DATABASE_URL needed
+      database: pool,
+      emailAndPassword: {
+        enabled: true,
+        requireEmailVerification: false,
+        minPasswordLength: 8,
+      },
+      session: {
+        expiresIn: 60 * 60 * 24 * 7, // 7 days
+        updateAge: 60 * 60 * 24, // Update session age every 24 hours
+        cookieCache: {
+          enabled: true,
+          maxAge: 5 * 60, // 5 minutes
         },
       },
-    },
-  },
-})
+      advanced: {
+        disableCSRFCheck: false,
+        defaultCookieAttributes: {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'lax' : 'lax',
+          path: '/',
+        },
+      },
+      databaseHooks: {
+        user: {
+          create: {
+            after: async (user) => {
+              try {
+                await handleFirstSignUp(user.id, user.name || '', user.email || '')
+              } catch (err) {
+                console.error('[better-auth] handleFirstSignUp failed:', err)
+                // Don't throw - let the user be created even if onboarding fails
+              }
+            },
+          },
+        },
+      },
+    })
 
 // ── App-level auth helpers ─────────────────────────────────────────────────────
 
