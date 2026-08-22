@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { isTauri } from '@tauri-apps/api/core'
 import Nav from '@/app/landing/nav'
 import Hero from '@/app/landing/hero'
 import Pain from '@/app/landing/pain'
@@ -16,17 +15,29 @@ export default function RootPage() {
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null)
 
   useEffect(() => {
-    isTauri().then(setIsDesktop)
+    // Method 1: Check for Tauri global object
+    const isTauriAvailable = typeof window !== 'undefined' && 
+      (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' || 
+       typeof (window as any).__TAURI__ !== 'undefined')
+    
+    if (isTauriAvailable) {
+      // Tauri is available, redirect to dashboard
+      setIsDesktop(true)
+    } else {
+      // Tauri is not available (web browser)
+      setIsDesktop(false)
+    }
   }, [])
+
+  // Handle the redirect when we confirm it's desktop
+  useEffect(() => {
+    if (isDesktop === true) {
+      window.location.href = '/dashboard'
+    }
+  }, [isDesktop])
 
   // Still detecting — show nothing to avoid flash
   if (isDesktop === null) {
-    return null
-  }
-
-  // Desktop: redirect to dashboard
-  if (isDesktop) {
-    window.location.href = '/dashboard'
     return null
   }
 
