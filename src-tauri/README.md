@@ -1,17 +1,15 @@
 # Trova IMS — Desktop Shell (Tauri)
 
-## What this is right now (Phase 0)
+## What this is
 
-This proves the packaging pipeline end-to-end: Tauri launches the app's
-existing Next.js server as a local process and displays it in a native
-window, with per-OS installers built by
-`.github/workflows/tauri-build.yml` (manual trigger, from the Actions tab).
-
-It is **not yet offline**. The packaged app still runs the same server
-code that talks to Amazon Aurora over the network — nothing about the
-database layer has changed. Launching a build from this workflow today
-produces an app that needs the same `DATABASE_URL`/AWS credentials and
-`BETTER_AUTH_SECRET` at runtime that the web deployment needs.
+A native Windows/macOS/Linux app built with Tauri, wrapping the existing
+Next.js app. It runs fully offline: the packaged app spawns the app's
+own server as a local process, backed by a local PGlite database
+(`lib/db/desktop-init.ts`) instead of Aurora, with no sign-in required
+(`DESKTOP_MODE=true` bypasses Better Auth entirely — see `lib/auth.ts`
+and `middleware.ts`). Per-OS installers are built by
+`.github/workflows/tauri-build.yml` (manual trigger, from the Actions
+tab) or `.github/workflows/release.yml` (automatic, on tagged releases).
 
 ## Testing locally during development
 
@@ -65,12 +63,28 @@ Or trigger it from GitHub Actions tab → **Build Desktop App (Tauri)**
 → **Run workflow**. Installers appear in the workflow run's Artifacts
 section once the job finishes (~10–20 min first run, faster on cache).
 
-## Known limitations (Phase 0)
+## Known limitations
 
 - **Requires system Node.js** in the packaged-app path (the release
   build spawns `node server.js` via the OS binary). Bundling a Node
-  runtime as a proper Tauri sidecar removes this dependency — Phase 1.
-- **No local database** — the app still reaches Aurora over the
-  network. Offline support comes with PGlite in a later phase.
-- **No runtime env var story** — once there's a local DB, `DATABASE_URL`
-  won't be needed at all from outside the app.
+  runtime as a proper Tauri sidecar would remove this dependency —
+  not yet done.
+
+## Troubleshooting a stuck / broken launch
+
+If the app shows a Tauri error page ("This page couldn't load") or the
+console log shows `EADDRINUSE: address already in use 127.0.0.1:47821`,
+an orphaned server process from a previous install is still running
+and holding the port. As of the process-lifecycle fix, the app kills
+its own server on exit and won't let a second instance launch a
+competing one — but if you're troubleshooting a build from before that
+fix landed, clear any leftovers manually:
+
+**Windows** — Task Manager → find any `node.exe` processes → End Task.
+Or in PowerShell: `Get-Process node | Stop-Process -Force`
+
+**macOS/Linux** — `pkill -f "standalone/server.js"`
+
+Then relaunch. The server log at `<app data dir>/server.log` has the
+exact error if the server still won't start — see the "Testing
+locally" paths above for where that directory is per OS.

@@ -2,13 +2,23 @@
 //
 // Two run modes:
 //   - `tauri dev`: Tauri starts `npm run dev` and points the window at
-//     http://localhost:3000 directly. This file does nothing extra.
+//     http://localhost:3000 directly. This file does nothing extra beyond
+//     single-instance handling.
 //   - Packaged app: spawns the bundled .next/standalone/server.js, polls
 //     until it accepts connections, then navigates away from the splash.
+//
+// Process lifecycle: the spawned Node server is tracked in managed state
+// and explicitly killed when the app exits (RunEvent::ExitRequested). The
+// single-instance plugin additionally guarantees only one copy of the app
+// — and therefore only one server — can ever be running at once. Together
+// these prevent orphaned Node processes from a previous session squatting
+// on SERVER_PORT and silently answering requests with stale, un-updated
+// code the next time the app launches.
 
 use std::fs::OpenOptions;
 use std::net::TcpStream;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{Manager, Url};
@@ -21,6 +31,10 @@ use tauri::{Manager, Url};
 /// If this port changes, that file needs the matching update or the
 /// frontend's Tauri detection silently breaks.
 const SERVER_PORT: u16 = 47821;
+
+/// Holds the spawned Node server so it can be killed on app exit instead
+/// of being left as an orphaned background process.
+struct ServerProcess(Mutex<Option<Child>>);
 
 /// Locate the system `node` binary.
 ///
@@ -71,19 +85,17 @@ fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
     log_path: &std::path::Path,
-) -> std::io::Result<std::process::Child> {
+) -> std::io::Result<Child> {
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
     let server_js      = standalone_dir.join("server.js");
-    let data_dir       = strip_verbatim_prefix(data_dir);
-    let node_bin       = find_node();
+    let data_dir        = strip_verbatim_prefix(data_dir);
+    let node_bin        = find_node();
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
     eprintln!("[trova-ims] data dir:      {}", data_dir.display());
     eprintln!("[trova-ims] server log:    {}", log_path.display());
 
-    // Verify server.js actually exists before trying to spawn it — gives a
-    // clear error instead of a cryptic "process exited immediately" timeout.
     if !server_js.exists() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -94,10 +106,7 @@ fn spawn_local_server(
         ));
     }
 
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)?;
+    let log_file  = OpenOptions::new().create(true).append(true).open(log_path)?;
     let log_clone = log_file.try_clone()?;
 
     let mut cmd = Command::new(&node_bin);
@@ -109,8 +118,6 @@ fn spawn_local_server(
         .env("TROVA_DATA_DIR",     &data_dir)
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
         .env("PATH",               std::env::var("PATH").unwrap_or_default())
-        // Write server output to the log file so startup errors are
-        // visible rather than silently disappearing.
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_clone));
 
@@ -124,8 +131,37 @@ fn spawn_local_server(
     cmd.spawn()
 }
 
+/// Kill the tracked server process, if any. Called on app exit.
+fn kill_server(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<ServerProcess>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(mut child) = guard.take() {
+                eprintln!("[trova-ims] Shutting down local server (pid {})", child.id());
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
 fn main() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default().manage(ServerProcess(Mutex::new(None)));
+
+    // Must be registered first — see Tauri's single-instance docs. On a
+    // second launch attempt, the closure below runs in the *original*
+    // instance instead of a new process being spawned, so we just focus
+    // the existing window rather than starting a second competing server.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }));
+    }
+
+    let app = builder
         .setup(|app| {
             if tauri::is_dev() {
                 return Ok(());
@@ -151,21 +187,19 @@ fn main() {
                     eprintln!("[trova-ims] Failed to start local server: {err}");
                     return Ok(());
                 }
-                Ok(_child) => {}
+                Ok(child) => {
+                    *app.state::<ServerProcess>().0.lock().unwrap() = Some(child);
+                }
             }
 
             let handle = app.handle().clone();
             thread::spawn(move || {
                 for attempt in 0..200 {
                     if TcpStream::connect(("127.0.0.1", SERVER_PORT)).is_ok() {
-                        eprintln!(
-                            "[trova-ims] Server ready after ~{}ms.",
-                            attempt * 150
-                        );
+                        eprintln!("[trova-ims] Server ready after ~{}ms.", attempt * 150);
                         if let Some(window) = handle.get_webview_window("main") {
-                            let url =
-                                Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
-                                    .expect("invalid local server URL");
+                            let url = Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
+                                .expect("invalid local server URL");
                             let _ = window.navigate(url);
                         }
                         return;
@@ -181,6 +215,12 @@ fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Trova IMS");
+        .build(tauri::generate_context!())
+        .expect("error while building Trova IMS");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            kill_server(app_handle);
+        }
+    });
 }
