@@ -32,6 +32,7 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  
   images: {
     unoptimized: true,
   },
@@ -43,6 +44,11 @@ const nextConfig = {
   // reading it at runtime.
   env: {
     DESKTOP_MODE: process.env.DESKTOP_MODE,
+  },
+
+  // Improve Node file tracing for standalone builds
+  experimental: {
+    optimizePackageImports: ['@base-ui/react', 'lucide-react', 'recharts'],
   },
 }
 
