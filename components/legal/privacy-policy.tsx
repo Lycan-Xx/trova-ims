@@ -9,12 +9,7 @@ export function PrivacyPolicy() {
       <header className="sticky top-0 z-50 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-[5px] flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--accent-primary)' }}>
-              <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
-                <rect x="1" y="5" width="5" height="8" rx="1" fill="white" />
-                <rect x="8" y="1" width="5" height="12" rx="1" fill="white" />
-              </svg>
-            </span>
+            <img src="/images/favicon.png" alt="Trova" width={24} height={24} style={{ borderRadius: 7 }} />
             <span className="text-sm font-semibold">Trova</span>
           </Link>
           <nav className="flex items-center gap-6 text-sm">
