@@ -167,9 +167,14 @@ export function Sidebar({ userRole }: { userRole?: UserRole }) {
           <img src="/images/favicon.png" alt="Trova" width={30} height={30} style={{ borderRadius: 7 }} />
         </div>
         {expanded && (
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            Trova
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Trova
+            </span>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.01em' }}>
+              v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.4'}
+            </span>
+          </div>
         )}
       </div>
 

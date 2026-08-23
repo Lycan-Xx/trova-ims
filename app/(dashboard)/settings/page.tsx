@@ -86,11 +86,20 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      {/* Legal Links */}
+      {/* Legal + version footer */}
       <div className="flex items-center justify-center gap-4 py-8 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+        <a
+          href="https://lycanforge.com.ng/trova/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-white transition-colors"
+        >
+          Privacy Policy
+        </a>
         <span>•</span>
         <span>© {new Date().getFullYear()} Trova</span>
+        <span>•</span>
+        <span>v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.4'}</span>
       </div>
     </main>
   )

@@ -151,8 +151,7 @@ export async function updateProduct(
 }
 
 // ─── deactivateProduct ────────────────────────────────────────────────────────
-// Soft delete only — never hard delete, since batches/sale_items reference
-// products via foreign keys and historical records must stay intact.
+// Soft delete — hides from catalog and POS but keeps history intact.
 
 export async function deactivateProduct(
   productId: string,
@@ -176,6 +175,52 @@ export async function deactivateProduct(
     )
 
     return { success: true, data: result.rows[0] as Product }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
+// ─── deleteProduct ─────────────────────────────────────────────────────────────
+// Hard delete. Blocked by the database if the product has any batches or
+// sale_items (ON DELETE RESTRICT foreign keys), which is the right behaviour —
+// you can't delete a product that's part of existing stock or sales history.
+// The UI should only expose this for products with no recorded batches.
+
+export async function deleteProduct(
+  productId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const user = await requireOwner()
+
+    const existing = await query(
+      'SELECT id FROM products WHERE id = $1 AND store_id = $2 LIMIT 1',
+      [productId, user.store_id],
+    )
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Product not found or access denied.' }
+    }
+
+    // Check for existing batches before attempting the delete — gives a
+    // cleaner error message than letting the FK constraint fire.
+    const batchCheck = await query(
+      'SELECT id FROM batches WHERE product_id = $1 LIMIT 1',
+      [productId],
+    )
+    if (batchCheck.rows.length > 0) {
+      return {
+        success: false,
+        error:
+          'This product has stock intake records and cannot be deleted. ' +
+          'Use Deactivate to hide it from the catalog instead.',
+      }
+    }
+
+    await query(
+      'DELETE FROM products WHERE id = $1 AND store_id = $2',
+      [productId, user.store_id],
+    )
+
+    return { success: true }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }

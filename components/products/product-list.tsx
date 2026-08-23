@@ -21,7 +21,7 @@ import {
 import { ProductSlideOver } from '@/components/products/product-slide-over'
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
-import { deactivateProduct } from '@/app/actions/products'
+import { deactivateProduct, deleteProduct } from '@/app/actions/products'
 import { toast } from 'sonner'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category } from '@/lib/db/schema'
@@ -61,18 +61,17 @@ export function ProductList({
     setSlideOverOpen(true)
   }
 
-  async function handleDeactivate(product: ProductWithStock) {
+  async function handleDelete(product: ProductWithStock) {
     const confirmed = window.confirm(
-      `Deactivate "${product.name}"? It will be hidden from the catalog and POS search, but its stock history stays intact. You can't undo this from the UI yet.`,
+      `Delete "${product.name}"?\n\nThis is permanent. If this product has any stock intake records it cannot be deleted — deactivate it instead to hide it from the catalog.`,
     )
     if (!confirmed) return
-
-    const result = await deactivateProduct(product.id)
+    const result = await deleteProduct(product.id)
     if (!result.success) {
       toast.error(result.error)
       return
     }
-    toast.success(`${product.name} deactivated.`)
+    toast.success(`${product.name} deleted.`)
     router.refresh()
   }
 
@@ -275,14 +274,17 @@ export function ProductList({
                         >
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer hover:bg-bg-input focus:bg-bg-input">
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-bg-input focus:bg-bg-input"
+                          onClick={() => router.push(`/products/${product.id}`)}
+                        >
                           View Details
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="cursor-pointer text-danger hover:bg-bg-input focus:bg-bg-input"
-                          onClick={() => handleDeactivate(product)}
+                          onClick={() => handleDelete(product)}
                         >
-                          Deactivate
+                          Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

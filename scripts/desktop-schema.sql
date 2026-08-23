@@ -30,11 +30,14 @@ END $$;
 -- ── Core tables ───────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS stores (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name       TEXT NOT NULL,
-  address    TEXT,
-  phone      TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                  TEXT NOT NULL,
+  address               TEXT,
+  phone                 TEXT,
+  -- Required by getStoreSettings() / StoreSettingsForm
+  currency              TEXT NOT NULL DEFAULT 'NGN',
+  onboarding_dismissed  BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -86,27 +89,39 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 CREATE TABLE IF NOT EXISTS batches (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id            UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-  product_id          UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
-  vendor_id           UUID REFERENCES vendors(id) ON DELETE SET NULL,
-  batch_ref           TEXT,
-  supplier_lot_number TEXT,
-  intake_session_id   UUID,
-  qty_received        INTEGER NOT NULL,
-  qty_remaining       INTEGER NOT NULL,
-  cost_price          NUMERIC(12, 2),
-  selling_price       NUMERIC(12, 2),
-  expiry_date         DATE,
-  received_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id              UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_id            UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  vendor_id             UUID REFERENCES vendors(id) ON DELETE SET NULL,
+  batch_ref             TEXT,
+  supplier_lot_number   TEXT,
+  intake_session_id     UUID,
+  qty_received          INTEGER NOT NULL,
+  qty_remaining         INTEGER NOT NULL,
+  -- Columns required by createBatchSession() in app/actions/batches.ts
+  pack_size             INTEGER NOT NULL DEFAULT 1,
+  total_purchase_cost   NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  cost_per_unit         NUMERIC(12, 2),
+  cost_price            NUMERIC(12, 2),
+  selling_price_override NUMERIC(12, 2),
+  selling_price         NUMERIC(12, 2),
+  is_consignment        BOOLEAN NOT NULL DEFAULT FALSE,
+  notes                 TEXT,
+  received_by_id        UUID,
+  expiry_date           DATE,
+  received_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS sales (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id        UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   receipt_number  TEXT NOT NULL,
+  -- Columns required by createSale() in app/actions/sales.ts
+  cashier_id      UUID,
   total_amount    NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  amount_paid     NUMERIC(12, 2),
+  change_given    NUMERIC(12, 2),
   payment_method  TEXT NOT NULL DEFAULT 'cash',
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -162,8 +177,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uc_users_auth_id_store
 -- but makes debugging predictable). These match the DESKTOP_LOCAL_STORE_ID
 -- and DESKTOP_LOCAL_USER_ID constants in lib/db/desktop-init.ts.
 
-INSERT INTO stores (id, name, created_at)
-VALUES ('00000000-0000-0000-0000-000000000001', 'My Store', NOW())
+INSERT INTO stores (id, name, currency, onboarding_dismissed, created_at)
+VALUES ('00000000-0000-0000-0000-000000000001', 'My Store', 'NGN', FALSE, NOW())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO users (id, store_id, name, email, role, is_active, created_at)
