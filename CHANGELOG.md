@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.1.4](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.3...v0.1.4) (2026-08-23)
+
+
+### Bug Fixes
+
+* vendor schema mismatch, auth route, release tooling, changelog ([de2272d](https://github.com/Lycan-Xx/trova-ims/commit/de2272d5bcd45b864ecd3512fb6f33ac726287b5))
+
 ## [0.1.3](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.2...v0.1.3) (2026-08-22)
 
 
