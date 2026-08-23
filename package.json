@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "node scripts/run-tests.mjs",
     "test:json": "node scripts/run-tests.mjs --json",
+    "test:desktop-build": "node scripts/test-desktop-build.mjs",
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:dev:external": "tauri dev --no-dev-server",
