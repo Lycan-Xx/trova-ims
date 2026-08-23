@@ -118,17 +118,27 @@ export async function query(text: string, params?: unknown[]) {
   }
 }
 
-/** Multi-statement transactions — not supported in desktop mode (PGlite
- *  uses .exec() for multi-statement; single-statement queries via query()
- *  are sufficient for all current action files) */
+/** Multi-statement transactions.
+ *
+ * Cloud (pool): acquires a dedicated connection, runs fn(client), releases.
+ *
+ * Desktop (PGlite): wraps fn() in a PGlite transaction. PGlite doesn't
+ * expose a pg-compatible Client object, so we shim one — the callback
+ * receives an object whose .query() method delegates to desktopQuery(),
+ * which runs against the same singleton PGlite database. BEGIN/COMMIT/
+ * ROLLBACK issued by the callback are executed as ordinary queries, which
+ * PGlite handles correctly in its single-connection, synchronous model.
+ */
 export async function withConnection<T>(
   fn: (client: ClientBase) => Promise<T>,
 ): Promise<T> {
   if (IS_DESKTOP) {
-    throw new Error(
-      '[desktop-db] withConnection() is not available in DESKTOP_MODE. ' +
-      'Use query() for individual statements instead.'
-    )
+    const shimClient = {
+      async query(text: string, params?: unknown[]) {
+        return desktopQuery(text, params)
+      },
+    } as unknown as ClientBase
+    return fn(shimClient)
   }
   const client = await pool.connect()
   try {
