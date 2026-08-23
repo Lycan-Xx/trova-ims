@@ -1,6 +1,19 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.3.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.2.0...v0.3.0) (2026-08-23)
+
+
+### Features
+
+* **landing:** update messaging and demo flow ([8682422](https://github.com/Lycan-Xx/trova-ims/commit/86824227b29f34c2297baf03626ccd7317fac839))
+
+
+### Bug Fixes
+
+* desktop feature bugs — vendor list, intake, product delete, version badge, privacy link ([a714104](https://github.com/Lycan-Xx/trova-ims/commit/a714104d283b250ed9dfc26f60219cd42f8e19e4))
+* desktop feature bugs, product delete, version badge, privacy link ([760f7d8](https://github.com/Lycan-Xx/trova-ims/commit/760f7d8902710425765b36522da04eb9aeece342))
+
 ## [0.2.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.4...v0.2.0) (2026-08-23)
 
 
