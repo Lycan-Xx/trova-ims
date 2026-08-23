@@ -71,8 +71,8 @@
 
 @theme inline {
   /* Fonts */
-  --font-sans: var(--font-jetbrains-mono), 'JetBrains Mono', sans-serif;
-  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --font-sans: 'JetBrains Mono', 'JetBrains Mono', sans-serif;
+  --font-mono: 'JetBrains Mono', 'JetBrains Mono', monospace;
 
   /* Background tokens */
   --color-bg-base: var(--bg-base);

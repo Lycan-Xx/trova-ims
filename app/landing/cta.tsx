@@ -33,7 +33,7 @@ export default function Cta() {
           className="text-[11px] font-semibold uppercase tracking-[0.14em] mb-6"
           style={{ color: 'var(--text-muted)' }}
         >
-          Get started
+          Try it first
         </p>
 
         {/* Headline */}
@@ -44,10 +44,10 @@ export default function Cta() {
             color: 'var(--text-primary)',
           }}
         >
-          Run a tighter store.
+          Experience the full app.
           <br />
           <span style={{ color: 'var(--accent-primary)' }}>
-            Starting today.
+            No signup required.
           </span>
         </h2>
 
@@ -56,16 +56,16 @@ export default function Cta() {
           className="text-[15px] leading-relaxed mb-10 max-w-sm mx-auto"
           style={{ color: 'var(--text-secondary)' }}
         >
-          Create your free Trova account. First batch logged in under a minute.
+          Click below to explore the complete application right now in your browser. Create products, record sales, view analytics — all with sample data.
         </p>
 
         {/* Primary CTA */}
         <Link
-          href="/sign-up"
+          href="/sign-in"
           className="inline-flex items-center gap-2.5 text-white font-semibold px-8 py-4 rounded-xl transition-opacity duration-150 hover:opacity-90 whitespace-nowrap"
           style={{ backgroundColor: 'var(--accent-primary)', fontSize: 15 }}
         >
-          Create your store — it&apos;s free
+          Start the Demo
           <svg
             width="14"
             height="14"
@@ -88,8 +88,24 @@ export default function Cta() {
           className="mt-5 text-[12px]"
           style={{ color: 'var(--text-muted)' }}
         >
-          No credit card &nbsp;·&nbsp; No setup fee &nbsp;·&nbsp; Cancel anytime
+          Takes 30 seconds &nbsp;·&nbsp; Works offline &nbsp;·&nbsp; No data required
         </p>
+
+        {/* Download coming soon */}
+        <div className="mt-10 pt-10 border-t" style={{ borderColor: 'var(--border)' }}>
+          <p
+            className="text-[13px] font-medium mb-3"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Download Trova for your desktop
+          </p>
+          <p
+            className="text-[12px]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            macOS, Windows, and Linux installers coming soon. Work completely offline with persistent local storage.
+          </p>
+        </div>
       </div>
     </section>
   )
