@@ -46,6 +46,13 @@ const nextConfig = {
     DESKTOP_MODE: process.env.DESKTOP_MODE,
   },
 
+  // Disable Vercel analytics integration which tries to process .nft.json
+  // during onBuildComplete. This is known to cause issues with standalone
+  // builds in Next.js 16+.
+  analytics: {
+    enabled: false,
+  },
+
   // Improve Node file tracing for standalone builds
   experimental: {
     optimizePackageImports: ['@base-ui/react', 'lucide-react', 'recharts'],

@@ -1,0 +1,9 @@
+.git
+.next
+src-tauri
+docs
+CONTRIBUTING.md
+CHANGELOG.md
+LICENSE
+README.md
+.env.example
