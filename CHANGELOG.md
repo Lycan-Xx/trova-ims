@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.2.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.4...v0.2.0) (2026-08-23)
+
+
+### Features
+
+* add global CSS with custom design tokens, fonts, and base styles ([f9f94ef](https://github.com/Lycan-Xx/trova-ims/commit/f9f94ef98fd972e66268b288ab601e9153fe377e))
+
+
+### Bug Fixes
+
+* improve Linux build reliability with retries and better error handling ([110c64d](https://github.com/Lycan-Xx/trova-ims/commit/110c64df243eda9a32b773e301b42ccd5483ab55))
+* install MinGW-w64 to provide dlltool for Windows builds ([990ab65](https://github.com/Lycan-Xx/trova-ims/commit/990ab65be26ce9d1c6ff11642499b8c493fcaa66))
+* use MSVC toolchain directly, avoid GNU tools and dlltool issues ([2235b2e](https://github.com/Lycan-Xx/trova-ims/commit/2235b2eec8619239865bcc5df47b45a761078d75))
+
 ## [0.1.4](https://github.com/Lycan-Xx/trova-ims/compare/v0.1.3...v0.1.4) (2026-08-23)
 
 
