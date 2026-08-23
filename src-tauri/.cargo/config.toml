@@ -1,0 +1,10 @@
+# Cargo configuration for Tauri builds
+# Force MSVC target to avoid GNU toolchain dependencies
+
+[build]
+# Use MSVC linker on Windows to avoid needing GNU binutils
+target = "x86_64-pc-windows-msvc"
+
+[target.x86_64-pc-windows-msvc]
+# Use the Visual Studio linker directly
+linker = "cl.exe"

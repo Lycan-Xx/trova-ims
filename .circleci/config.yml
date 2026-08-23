@@ -209,43 +209,27 @@ jobs:
             node --version
             npm --version
       - run:
-          name: Install Rust and MinGW binutils
+          name: Install Rust and build tools
           command: |
-            # Install Rust
+            # Install Visual Studio Build Tools (includes required C++ toolchain)
+            choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64" -y
+            
+            # Install Rust with stable toolchain
             if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
               Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
               .\rustup-init.exe -y --default-toolchain stable
               Remove-Item rustup-init.exe
             }
             
-            # Download and extract MinGW binutils (dlltool)
-            $dlltoolDir = "C:\mingw-binutils"
-            New-Item -ItemType Directory -Path $dlltoolDir -Force | Out-Null
+            # Set up PATH for Rust
+            $cargoPath = "$env:USERPROFILE\.cargo\bin"
+            $env:Path = "$cargoPath;$env:Path"
+            [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
             
-            # Download pre-built binutils from GitHub releases
-            $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240518/llvm-mingw-20240518-msvcrt-x86_64.zip"
-            $zipPath = "$dlltoolDir\mingw.zip"
-            
-            Write-Host "Downloading MinGW tools..."
-            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
-            
-            Write-Host "Extracting MinGW tools..."
-            Expand-Archive -Path $zipPath -DestinationPath $dlltoolDir -Force
-            
-            # Set PATH to include MinGW bin directory
-            $mingwBin = Get-ChildItem -Path $dlltoolDir -Recurse -Filter "dlltool.exe" | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
-            
-            if ($mingwBin) {
-              $cargoPath = "$env:USERPROFILE\.cargo\bin"
-              $env:Path = "$mingwBin;$cargoPath;$env:Path"
-              [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
-              Write-Host "MinGW bin path: $mingwBin"
-            }
-            
-            # Verify tools
+            # Verify installation
             rustc --version
             cargo --version
-            dlltool --version
+            echo "Build tools installed successfully"
       - restore_cache:
           keys:
             - npm-deps-win-{{ checksum "package-lock.json" }}
