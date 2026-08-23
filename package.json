@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:desktop": "node ./scripts/dev-desktop.js",
-    "build": "next build",
+    "build": "next build && node ./scripts/vercel-postbuild.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "node scripts/run-tests.mjs",
