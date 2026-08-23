@@ -253,13 +253,8 @@ jobs:
 workflows:
   version: 2
 
-  # Manual workflow for desktop builds
+  # Main workflow - runs on main and separation-attempt branches
   build-desktop-apps:
-    when:
-      # Only run when manually triggered or when a tag is pushed
-      or:
-        - equal: [ scheduled_pipeline, << pipeline.trigger_source >> ]
-        - << pipeline.git.tag >>
     jobs:
       - build-linux:
           filters:
@@ -284,22 +279,40 @@ workflows:
             - build-linux
             - build-macos
             - build-windows
-
-  # Nightly builds (optional)
-  nightly-builds:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *" # Run at midnight UTC
           filters:
             branches:
               only:
                 - main
+                - separation-attempt
+
+  # Tag-based workflow - runs only on git tags
+  build-on-tags:
     jobs:
-      - build-linux
-      - build-macos
-      - build-windows
+      - build-linux:
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-macos:
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
+      - build-windows:
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
       - collect-artifacts:
           requires:
             - build-linux
             - build-macos
             - build-windows
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
