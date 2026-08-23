@@ -221,6 +221,9 @@ jobs:
               Remove-Item rustup-init.exe
             }
             
+            # Install Windows MSVC target
+            rustup target add x86_64-pc-windows-msvc
+            
             # Set up PATH for Rust
             $cargoPath = "$env:USERPROFILE\.cargo\bin"
             $env:Path = "$cargoPath;$env:Path"
