@@ -71,7 +71,7 @@
 
 @theme inline {
   /* Fonts */
-  --font-sans: var(--font-inter), 'Inter', sans-serif;
+  --font-sans: var(--font-jetbrains-mono), 'JetBrains Mono', sans-serif;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
 
   /* Background tokens */
