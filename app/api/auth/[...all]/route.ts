@@ -1,13 +1,27 @@
 import { auth } from '@/lib/auth'
 import { toNextJsHandler } from 'better-auth/next-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { IS_DESKTOP } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
+
+const desktopHandler = async (_request: NextRequest) => {
+  // Return a null session response — the shape useSession() and the
+  // auth client expect for an "unauthenticated" state. Returning a
+  // redirect here would cause every useSession() call (which fires
+  // on every dashboard page mount via Topbar) to receive a 3xx
+  // instead of JSON, silently breaking session detection and
+  // generating console errors.
+  return NextResponse.json(null)
+}
 
 const { GET: betterAuthGET, POST: betterAuthPOST } = toNextJsHandler(auth.handler)
 
 // Wrap handlers to provide better error messages
 export async function GET(request: NextRequest) {
+  if (IS_DESKTOP) {
+    return desktopHandler()
+  }
   try {
     return await betterAuthGET(request)
   } catch (err) {
@@ -33,6 +47,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (IS_DESKTOP) {
+    return desktopHandler()
+  }
   try {
     return await betterAuthPOST(request)
   } catch (err) {

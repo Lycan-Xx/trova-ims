@@ -59,11 +59,12 @@ CREATE TABLE IF NOT EXISTS vendors (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id        UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   name            TEXT NOT NULL,
-  contact_person  TEXT,
-  phone           TEXT,
-  email           TEXT,
+  -- Named `contact` (not contact_person) to match app/actions/vendors.ts
+  -- and lib/db/schema.ts, which are the authoritative API layer.
+  contact         TEXT,
   address         TEXT,
-  vendor_type     vendor_type NOT NULL DEFAULT 'direct',
+  -- Named `type` to match the actions layer; vendor_type is the enum *type*.
+  type            vendor_type NOT NULL DEFAULT 'direct',
   notes           TEXT,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

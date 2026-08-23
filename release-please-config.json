@@ -6,9 +6,8 @@
       "release-type": "node",
       "extra-files": [
         {
-          "type": "toml",
-          "path": "src-tauri/Cargo.toml",
-          "jsonpath": "$.package.version"
+          "type": "generic",
+          "path": "src-tauri/Cargo.toml"
         }
       ]
     }

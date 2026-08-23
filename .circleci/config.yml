@@ -1,0 +1,305 @@
+version: 2.1
+
+# Orbs provide reusable commands and executors
+orbs:
+  node: circleci/node@5.2.0
+  rust: circleci/rust@1.6.1
+  win: circleci/windows@5.0.0
+
+# Define parameters for manual workflow triggers
+parameters:
+  build-profile:
+    type: enum
+    enum: ["release", "debug"]
+    default: "release"
+
+# Define executors for different platforms
+executors:
+  linux-builder:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large
+    environment:
+      # Placeholder secrets - override with CircleCI project environment variables
+      DATABASE_URL: postgres://build:build@localhost:5432/build
+      BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
+
+  macos-builder:
+    macos:
+      xcode: 15.3.0
+    resource_class: macos.m1.large.gen1
+    environment:
+      DATABASE_URL: postgres://build:build@localhost:5432/build
+      BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
+
+  windows-builder:
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.large
+    shell: powershell.exe -ExecutionPolicy Bypass
+    environment:
+      DATABASE_URL: postgres://build:build@localhost:5432/build
+      BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
+
+# Reusable commands
+commands:
+  install-node-deps:
+    description: "Install Node.js dependencies"
+    steps:
+      - restore_cache:
+          keys:
+            - npm-deps-{{ checksum "package-lock.json" }}
+            - npm-deps-
+      - run:
+          name: Install npm dependencies
+          command: npm ci
+      - save_cache:
+          key: npm-deps-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+
+  install-rust:
+    description: "Install Rust toolchain"
+    steps:
+      - restore_cache:
+          keys:
+            - rust-{{ arch }}-{{ checksum "src-tauri/Cargo.lock" }}
+            - rust-{{ arch }}-
+      - run:
+          name: Install Rust
+          command: |
+            if ! command -v rustc &> /dev/null; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+              echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> $BASH_ENV
+              source $BASH_ENV
+            fi
+            rustc --version
+            cargo --version
+
+  install-linux-deps:
+    description: "Install Linux system dependencies for Tauri"
+    steps:
+      - run:
+          name: Update package lists and install dependencies
+          command: |
+            # Use main Ubuntu archive instead of potentially unreliable mirrors
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list || true
+            sudo apt-get update
+            sudo apt-get install -y \
+              libwebkit2gtk-4.1-dev \
+              libgtk-3-dev \
+              libayatana-appindicator3-dev \
+              librsvg2-dev \
+              patchelf \
+              build-essential \
+              curl \
+              wget \
+              file
+
+  build-tauri-app:
+    description: "Build Tauri desktop application"
+    parameters:
+      bundles:
+        type: string
+        description: "Comma-separated list of bundle types"
+      profile:
+        type: enum
+        enum: ["release", "debug"]
+        default: "release"
+    steps:
+      - run:
+          name: Build Tauri app
+          command: |
+            DEBUG_FLAG=""
+            if [ "<< parameters.profile >>" = "debug" ]; then
+              DEBUG_FLAG="--debug"
+            fi
+            npx tauri build ${DEBUG_FLAG} --bundles << parameters.bundles >>
+          no_output_timeout: 30m
+
+# Jobs definition
+jobs:
+  build-linux:
+    executor: linux-builder
+    steps:
+      - checkout
+      - node/install:
+          node-version: "20"
+      - install-rust
+      - install-linux-deps
+      - install-node-deps
+      - restore_cache:
+          keys:
+            - rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
+            - rust-build-linux-
+      - build-tauri-app:
+          bundles: "deb,rpm"
+          profile: << pipeline.parameters.build-profile >>
+      - save_cache:
+          key: rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
+          paths:
+            - src-tauri/target
+      - store_artifacts:
+          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
+          destination: linux-build
+      - persist_to_workspace:
+          root: src-tauri/target
+          paths:
+            - << pipeline.parameters.build-profile >>/bundle/deb
+            - << pipeline.parameters.build-profile >>/bundle/rpm
+
+  build-macos:
+    executor: macos-builder
+    steps:
+      - checkout
+      - node/install:
+          node-version: "20"
+      - install-rust
+      - install-node-deps
+      - restore_cache:
+          keys:
+            - rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
+            - rust-build-macos-
+      - build-tauri-app:
+          bundles: "dmg"
+          profile: << pipeline.parameters.build-profile >>
+      - save_cache:
+          key: rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
+          paths:
+            - src-tauri/target
+      - store_artifacts:
+          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
+          destination: macos-build
+      - persist_to_workspace:
+          root: src-tauri/target
+          paths:
+            - << pipeline.parameters.build-profile >>/bundle/dmg
+
+  build-windows:
+    executor: windows-builder
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js
+          command: |
+            choco install nodejs --version=20.11.1 -y
+            node --version
+            npm --version
+      - run:
+          name: Install Rust
+          command: |
+            if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
+              Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+              .\rustup-init.exe -y --default-toolchain stable
+              Remove-Item rustup-init.exe
+            }
+            $env:Path += ";$env:USERPROFILE\.cargo\bin"
+            [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Process)
+            rustc --version
+            cargo --version
+      - restore_cache:
+          keys:
+            - npm-deps-win-{{ checksum "package-lock.json" }}
+            - npm-deps-win-
+      - run:
+          name: Install npm dependencies
+          command: npm ci
+      - save_cache:
+          key: npm-deps-win-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - restore_cache:
+          keys:
+            - rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
+            - rust-build-windows-
+      - run:
+          name: Build Tauri app
+          command: |
+            $debugFlag = ""
+            if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
+              $debugFlag = "--debug"
+            }
+            npx tauri build $debugFlag --bundles msi,nsis
+          no_output_timeout: 30m
+      - save_cache:
+          key: rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
+          paths:
+            - src-tauri/target
+      - store_artifacts:
+          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
+          destination: windows-build
+      - persist_to_workspace:
+          root: src-tauri/target
+          paths:
+            - << pipeline.parameters.build-profile >>/bundle/msi
+            - << pipeline.parameters.build-profile >>/bundle/nsis
+
+  collect-artifacts:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - attach_workspace:
+          at: /tmp/artifacts
+      - store_artifacts:
+          path: /tmp/artifacts
+          destination: all-builds
+      - run:
+          name: List all artifacts
+          command: |
+            echo "=== Build Artifacts ==="
+            find /tmp/artifacts -type f
+
+# Workflows
+workflows:
+  version: 2
+
+  # Manual workflow for desktop builds
+  build-desktop-apps:
+    when:
+      # Only run when manually triggered or when a tag is pushed
+      or:
+        - equal: [ scheduled_pipeline, << pipeline.trigger_source >> ]
+        - << pipeline.git.tag >>
+    jobs:
+      - build-linux:
+          filters:
+            branches:
+              only:
+                - main
+                - separation-attempt
+      - build-macos:
+          filters:
+            branches:
+              only:
+                - main
+                - separation-attempt
+      - build-windows:
+          filters:
+            branches:
+              only:
+                - main
+                - separation-attempt
+      - collect-artifacts:
+          requires:
+            - build-linux
+            - build-macos
+            - build-windows
+
+  # Nightly builds (optional)
+  nightly-builds:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *" # Run at midnight UTC
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - build-linux
+      - build-macos
+      - build-windows
+      - collect-artifacts:
+          requires:
+            - build-linux
+            - build-macos
+            - build-windows

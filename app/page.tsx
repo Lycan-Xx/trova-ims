@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { isTauri } from '@tauri-apps/api/core'
 import Nav from '@/app/landing/nav'
 import Hero from '@/app/landing/hero'
 import Pain from '@/app/landing/pain'
@@ -13,22 +12,9 @@ import Cta from '@/app/landing/cta'
 import Footer from '@/app/landing/footer'
 
 export default function RootPage() {
-  const [isDesktop, setIsDesktop] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    isTauri().then(setIsDesktop)
-  }, [])
-
-  // Still detecting — show nothing to avoid flash
-  if (isDesktop === null) {
-    return null
-  }
-
-  // Desktop: redirect to dashboard
-  if (isDesktop) {
-    window.location.href = '/dashboard'
-    return null
-  }
+  // Landing page for web browsers. Server-side routing now owns the
+  // desktop redirect when DESKTOP_MODE=true, so the client no longer
+  // attempts to detect Tauri and perform a client-side redirect.
 
   // Web: show marketing page
   return (

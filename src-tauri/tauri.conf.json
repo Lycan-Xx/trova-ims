@@ -7,7 +7,7 @@
     "frontendDist": "splash",
     "beforeBuildCommand": "node scripts/tauri-prebuild.mjs",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "npm run dev -- --port 3000"
+    "beforeDevCommand": "npm run dev:desktop"
   },
   "app": {
     "windows": [
