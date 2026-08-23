@@ -33,7 +33,10 @@ executors:
       BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
 
   windows-builder:
-    executor: win/default
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.large
+    shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       DATABASE_URL: postgres://build:build@localhost:5432/build
       BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
