@@ -82,9 +82,24 @@ commands:
       - run:
           name: Update package lists and install dependencies
           command: |
-            # Use main Ubuntu archive instead of potentially unreliable mirrors
+            # Fix Ubuntu mirrors to use main archive
             sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list || true
-            sudo apt-get update
+            sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list || true
+            
+            # Retry apt-get update up to 3 times
+            for i in 1 2 3; do
+              echo "Attempt $i: Updating package lists..."
+              if sudo apt-get update; then
+                break
+              elif [ $i -lt 3 ]; then
+                echo "Attempt $i failed, retrying..."
+                sleep 10
+              else
+                echo "All retry attempts failed!"
+                exit 1
+              fi
+            done
+            
             sudo apt-get install -y \
               libwebkit2gtk-4.1-dev \
               libgtk-3-dev \
@@ -114,7 +129,15 @@ commands:
             if [ "<< parameters.profile >>" = "debug" ]; then
               DEBUG_FLAG="--debug"
             fi
-            npx tauri build ${DEBUG_FLAG} --bundles << parameters.bundles >>
+            
+            echo "Starting Tauri build with bundles: << parameters.bundles >>"
+            echo "Profile: << parameters.profile >>"
+            
+            set -e  # Exit on any error
+            npx tauri build ${DEBUG_FLAG} --bundles << parameters.bundles >> || {
+              echo "Build failed, checking for common issues..."
+              exit 1
+            }
           no_output_timeout: 30m
 
 # Jobs definition
@@ -186,11 +209,8 @@ jobs:
             node --version
             npm --version
       - run:
-          name: Install Rust and build tools
+          name: Install Rust and MinGW binutils
           command: |
-            # Install MinGW-w64 for dlltool and other GNU tools
-            choco install mingw-w64 -y
-            
             # Install Rust
             if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
               Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
@@ -198,13 +218,31 @@ jobs:
               Remove-Item rustup-init.exe
             }
             
-            # Set up PATH for MinGW and Rust
-            $mingwPath = "C:\tools\mingw64\bin"
-            $cargoPath = "$env:USERPROFILE\.cargo\bin"
-            $env:Path = "$mingwPath;$cargoPath;$env:Path"
-            [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+            # Download and extract MinGW binutils (dlltool)
+            $dlltoolDir = "C:\mingw-binutils"
+            New-Item -ItemType Directory -Path $dlltoolDir -Force | Out-Null
             
-            # Verify tools are available
+            # Download pre-built binutils from GitHub releases
+            $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20240518/llvm-mingw-20240518-msvcrt-x86_64.zip"
+            $zipPath = "$dlltoolDir\mingw.zip"
+            
+            Write-Host "Downloading MinGW tools..."
+            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+            
+            Write-Host "Extracting MinGW tools..."
+            Expand-Archive -Path $zipPath -DestinationPath $dlltoolDir -Force
+            
+            # Set PATH to include MinGW bin directory
+            $mingwBin = Get-ChildItem -Path $dlltoolDir -Recurse -Filter "dlltool.exe" | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
+            
+            if ($mingwBin) {
+              $cargoPath = "$env:USERPROFILE\.cargo\bin"
+              $env:Path = "$mingwBin;$cargoPath;$env:Path"
+              [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+              Write-Host "MinGW bin path: $mingwBin"
+            }
+            
+            # Verify tools
             rustc --version
             cargo --version
             dlltool --version
