@@ -5,8 +5,14 @@ import { IS_DESKTOP } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
-const desktopHandler = async () => {
-  return NextResponse.redirect(new URL('/dashboard', 'http://localhost'))
+const desktopHandler = async (_request: NextRequest) => {
+  // Return a null session response — the shape useSession() and the
+  // auth client expect for an "unauthenticated" state. Returning a
+  // redirect here would cause every useSession() call (which fires
+  // on every dashboard page mount via Topbar) to receive a 3xx
+  // instead of JSON, silently breaking session detection and
+  // generating console errors.
+  return NextResponse.json(null)
 }
 
 const { GET: betterAuthGET, POST: betterAuthPOST } = toNextJsHandler(auth.handler)
