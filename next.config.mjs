@@ -49,6 +49,8 @@ const nextConfig = {
   // Improve Node file tracing for standalone builds
   experimental: {
     optimizePackageImports: ['@base-ui/react', 'lucide-react', 'recharts'],
+    // Disable Turbopack for production builds to use webpack which has better NFT support
+    turbo: false,
   },
 }
 

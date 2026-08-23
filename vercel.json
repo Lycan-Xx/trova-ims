@@ -2,6 +2,7 @@
   "regions": ["lhr1"],
   "buildCommand": "npm run build",
   "env": {
-    "NODE_OPTIONS": "--max-old-space-size=4096"
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "VERCEL_ANALYTICS_DISABLED": "1"
   }
 }
