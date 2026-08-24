@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.3.1](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.0...v0.3.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* remove .cargo/config.toml that broke all three CI platforms ([906a5e3](https://github.com/Lycan-Xx/trova-ims/commit/906a5e3a68228a0287d1990556b16e8dd29a4997))
+* remove .cargo/config.toml that hardcoded Windows MSVC target globally ([80fa377](https://github.com/Lycan-Xx/trova-ims/commit/80fa377eac38191b4a494454768e743d7b6ec1e4))
+
 ## [0.3.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.2.0...v0.3.0) (2026-08-23)
 
 
