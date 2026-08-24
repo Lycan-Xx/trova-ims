@@ -9,7 +9,7 @@
 // replacement for the cloud `pool.query()`.
 
 import { PGlite } from '@electric-sql/pglite'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, openSync, readFileSync, closeSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
@@ -31,19 +31,54 @@ function getDbPath(): string {
 }
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
+//
+// PGlite is a single-connection WASM database — it does not support being
+// opened by more than one process simultaneously. If a stale server.js
+// process from a previous app session is still running and already has
+// trova.db open, a second process trying to open the same file will cause
+// the WASM runtime to abort() with a cryptic "RuntimeError: Aborted()"
+// message. A simple lock file gives a much clearer error and prevents
+// the WASM crash.
 
 let _db: PGlite | null = null
+let _lockFd: number | null = null
 
 export async function getDesktopDb(): Promise<PGlite> {
   if (_db) return _db
 
   const dbPath = getDbPath()
+  const lockPath = dbPath + '.lock'
   console.log(`[desktop-db] Opening local database at ${dbPath}`)
 
-  // Ensure the parent directory exists — PGlite will fail if it doesn't.
-  // In packaged Tauri builds main.rs creates this before spawning the
-  // server, but guard here too for `npm run desktop:dev:external` / tests.
+  // Ensure the parent directory exists.
   mkdirSync(dirname(dbPath), { recursive: true })
+
+  // Acquire a simple lock file before opening PGlite. If another server.js
+  // process (orphaned from a previous install/session) already holds the
+  // lock, fail fast with a clear error instead of letting PGlite's WASM
+  // runtime crash with "RuntimeError: Aborted()".
+  try {
+    // O_CREAT | O_EXCL = create only if not exists — atomic on all platforms.
+    _lockFd = openSync(lockPath, 'wx')
+  } catch {
+    throw new Error(
+      `[desktop-db] Cannot open trova.db — another Trova IMS process is already ` +
+      `running and holds the database lock (${lockPath}).\n` +
+      `Close all other Trova IMS windows and try again. If the problem persists, ` +
+      `delete ${lockPath} manually.`
+    )
+  }
+
+  // Release the lock file when the Node process exits.
+  process.on('exit', () => {
+    if (_lockFd !== null) {
+      try { closeSync(_lockFd) } catch {}
+      try {
+        const { unlinkSync } = require('node:fs') as typeof import('node:fs')
+        unlinkSync(lockPath)
+      } catch {}
+    }
+  })
 
   _db = new PGlite(dbPath)
 

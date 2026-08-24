@@ -11,7 +11,18 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const standaloneDir = path.join(root, '.next', 'standalone')
+const nextDir = path.join(root, '.next')
+const standaloneDir = path.join(nextDir, 'standalone')
+
+// Force a completely clean Next.js build before packaging. Without this,
+// old Turbopack artifacts from `next dev` (which uses Turbopack by default
+// in Next 15+) can survive into the webpack production build and make it
+// into the bundled installer. The result is a mix of Turbopack-hashed
+// module names (e.g. pg-587764f78a6c7a9c) and real package names in the
+// same standalone directory — the server tries to load the hash name, it
+// doesn't exist, and every request fails.
+console.log('[tauri-prebuild] Cleaning previous .next/ build artifacts…')
+rmSync(nextDir, { recursive: true, force: true })
 
 console.log('[tauri-prebuild] Building Next.js (standalone output)…')
 execSync('npm run build', { cwd: root, stdio: 'inherit' })

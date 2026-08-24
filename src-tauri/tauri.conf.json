@@ -40,6 +40,13 @@
     ],
     "resources": {
       "../.next/standalone": "standalone"
+    },
+    "windows": {
+      "nsis": {
+        "upgradeCode": "7e3f8d12-4a1c-4b9e-8c2f-1d5a6e7b9c0d",
+        "installerMode": "currentUser",
+        "minimumWebviewVersion": "2.0.0"
+      }
     }
   }
 }
