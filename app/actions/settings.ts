@@ -49,7 +49,7 @@ export async function updateStoreSettings(formData: {
 export async function getStoreSettings(): Promise<
   { success: true; data: Store } |
   { success: false; error: string }
-> => {
+> {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
 
