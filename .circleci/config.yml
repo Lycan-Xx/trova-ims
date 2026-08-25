@@ -256,12 +256,15 @@ jobs:
           command: |
             # Discard any target artifacts made with the GNU target. Those
             # artifacts invoke dlltool, which is not part of the MSVC build.
-            cargo clean --manifest-path src-tauri/Cargo.toml
+            $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
+            $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
+            rustup run $env:RUSTUP_TOOLCHAIN rustc -vV
+            cargo clean --target $env:CARGO_BUILD_TARGET --manifest-path src-tauri/Cargo.toml
             $debugFlag = ""
             if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
               $debugFlag = "--debug"
             }
-            npm run desktop:build -- $debugFlag --bundles msi,nsis
+            npm run desktop:build -- $debugFlag --target $env:CARGO_BUILD_TARGET --bundles msi,nsis
           no_output_timeout: 30m
       - save_cache:
           key: rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}

@@ -1,6 +1,6 @@
 [package]
 name = "trova-ims"
-version = "0.3.1" # x-release-please-version
+version = "0.3.3" # x-release-please-version
 description = "Trova IMS — offline desktop shell"
 edition = "2021"
 rust-version = "1.77"
