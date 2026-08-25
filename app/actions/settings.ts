@@ -1,8 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidateTag } from 'next/cache'
-import { cache } from 'react'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { query } from '@/lib/db'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
 import type { Store, User, UserRole } from '@/lib/db/schema'
@@ -32,6 +31,11 @@ export async function updateStoreSettings(formData: {
     
     // Revalidate store cache so CurrencyProvider gets fresh data
     revalidateTag(`store-${user.store_id}`, 'max')
+    revalidatePath('/dashboard')
+    revalidatePath('/sales', 'layout')
+    revalidatePath('/products', 'layout')
+    revalidatePath('/intake', 'layout')
+    revalidatePath('/settings')
     
     return { success: true }
   } catch (err) {
@@ -42,7 +46,7 @@ export async function updateStoreSettings(formData: {
 
 // ── getStoreSettings ───────────────────────────────────────────────────────────
 
-export const getStoreSettings = cache(async (): Promise<
+export async function getStoreSettings(): Promise<
   { success: true; data: Store } |
   { success: false; error: string }
 > => {
@@ -60,7 +64,7 @@ export const getStoreSettings = cache(async (): Promise<
     const message = err instanceof Error ? err.message : 'Failed to fetch store settings.'
     return { success: false, error: message }
   }
-})
+}
 
 // ── getUsers ───────────────────────────────────────────────────────────────────
 

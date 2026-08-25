@@ -1061,6 +1061,9 @@ export function IntakeForm({ products, vendors, categories, defaultProductId, de
       }
 
       router.push('/intake')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to record stock intake.'
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }

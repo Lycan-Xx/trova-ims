@@ -299,12 +299,28 @@ export default function NewSalePage() {
 
                     // Not a barcode match — fall back to the normal
                     // search-dropdown behavior for a typed name/SKU.
-                    if (searchResults.length > 0) {
-                      const first = searchResults.find((p) => p.current_stock > 0)
+                    // The debounce may not have completed yet when a user
+                    // presses Enter after typing a name/SKU. Resolve the
+                    // normal search directly so manual lookup remains a
+                    // reliable fallback to barcode lookup.
+                    let typedResults = searchResults
+                    if (typedResults.length === 0) {
+                      const typedResult = await getProducts({ search: raw, page: 1 })
+                      if (!typedResult.success) {
+                        toast.error(typedResult.error)
+                        return
+                      }
+                      typedResults = typedResult.data.products.slice(0, 8)
+                    }
+
+                    if (typedResults.length > 0) {
+                      const first = typedResults.find((p) => p.current_stock > 0)
                       if (first) {
                         addToCart(first)
                         return
                       }
+                      toast.error('All matching products are out of stock.')
+                      return
                     }
 
                     // Nothing matched at all — most likely a scanned code

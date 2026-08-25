@@ -225,7 +225,12 @@ export default async function SaleConfirmationPage({
 
         {/* Action buttons */}
         <div className="flex gap-3">
-          <ReceiptDownloadButton sale={sale} />
+          <ReceiptDownloadButton
+            sale={sale}
+            storeName={storeResult.success ? storeResult.data.name : undefined}
+            storeAddress={storeResult.success ? storeResult.data.address ?? undefined : undefined}
+            storePhone={storeResult.success ? storeResult.data.phone ?? undefined : undefined}
+          />
 
           <Link
             href="/sales/new"
