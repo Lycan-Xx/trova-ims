@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.0...v1.0.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* correct settings action syntax ([1f7b623](https://github.com/Lycan-Xx/trova-ims/commit/1f7b623b8afb45df90db211ac1772cd46b2800ba))
+* restore lookup and intake persistence ([60b371c](https://github.com/Lycan-Xx/trova-ims/commit/60b371cf3d29af2ed8116c7164728a4e4ec48d51))
+* **windows:** bundle runtime dependencies in desktop installer ([1abf3f7](https://github.com/Lycan-Xx/trova-ims/commit/1abf3f749ebc6c0c75459548ac816e90ca53923b))
+
 ## [1.0.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.4...v1.0.0) (2026-08-25)
 
 
