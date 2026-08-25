@@ -36,13 +36,23 @@ const SERVER_PORT: u16 = 47821;
 /// of being left as an orphaned background process.
 struct ServerProcess(Mutex<Option<Child>>);
 
-/// Locate the system `node` binary.
+/// Locate the bundled Node.js binary, falling back to the system binary for
+/// development builds and older installations.
 ///
 /// Windows packaged apps don't reliably inherit the interactive shell's
-/// PATH. `where.exe` / `which` query the system search path independently
-/// of the inherited process PATH, so they find Node even when a bare
-/// `Command::new("node")` would fail.
-fn find_node() -> String {
+/// PATH, which is why the packaged runtime is preferred over PATH lookup.
+fn find_node(resource_dir: &std::path::Path) -> String {
+    let bundled = resource_dir.join("node-runtime").join(if cfg!(target_os = "windows") {
+        "node.exe"
+    } else {
+        "bin/node"
+    });
+    if bundled.exists() {
+        return bundled.to_string_lossy().into_owned();
+    }
+
+    // Development fallback: locate Node independently of the inherited PATH.
+    // This is intentionally only a fallback; release installers contain Node.
     #[cfg(target_os = "windows")]
     let (search_bin, search_arg) = ("where.exe", "node");
     #[cfg(not(target_os = "windows"))]
@@ -89,7 +99,7 @@ fn spawn_local_server(
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
     let server_js = standalone_dir.join("server.js");
     let data_dir = strip_verbatim_prefix(data_dir);
-    let node_bin = find_node();
+    let node_bin = find_node(resource_dir);
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
@@ -221,7 +231,7 @@ fn main() {
                 eprintln!(
                     "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
                      Check the server log at the app data directory for the exact error.\n\
-                     Is Node.js installed?"
+                     The bundled Node.js runtime could not start."
                 );
             });
 
