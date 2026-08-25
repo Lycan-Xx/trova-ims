@@ -1,6 +1,15 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.3.2](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.1...v0.3.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** synchronize desktop versions and build toolchains ([25644c7](https://github.com/Lycan-Xx/trova-ims/commit/25644c77080560e19c44f30c607813e604f8a2fa))
+* clean build artifacts, NSIS upgrade code, PGlite lock file ([7127164](https://github.com/Lycan-Xx/trova-ims/commit/71271645d69b827903e813e7e75f9b79cde1dc4f))
+* clean build cache, NSIS upgrade code, PGlite lock file ([778aa90](https://github.com/Lycan-Xx/trova-ims/commit/778aa903e5608200227e626dd3ad814f66b0f868))
+
 ## [0.3.1](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.0...v0.3.1) (2026-08-24)
 
 
