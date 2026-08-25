@@ -36,11 +36,9 @@ const SERVER_PORT: u16 = 47821;
 /// of being left as an orphaned background process.
 struct ServerProcess(Mutex<Option<Child>>);
 
-/// Locate the bundled Node.js binary, falling back to the system binary for
-/// development builds and older installations.
-///
-/// Windows packaged apps don't reliably inherit the interactive shell's
-/// PATH, which is why the packaged runtime is preferred over PATH lookup.
+/// Locate the bundled Node.js binary when one exists, otherwise use the
+/// system installation. Lean packages intentionally rely on the user's
+/// existing Node.js installation instead of shipping another copy.
 fn find_node(resource_dir: &std::path::Path) -> String {
     let bundled = resource_dir.join("node-runtime").join(if cfg!(target_os = "windows") {
         "node.exe"
@@ -51,8 +49,8 @@ fn find_node(resource_dir: &std::path::Path) -> String {
         return bundled.to_string_lossy().into_owned();
     }
 
-    // Development fallback: locate Node independently of the inherited PATH.
-    // This is intentionally only a fallback; release installers contain Node.
+    // Locate Node independently of the inherited PATH. This is used by lean
+    // release installers, which intentionally do not contain a Node runtime.
     #[cfg(target_os = "windows")]
     let (search_bin, search_arg) = ("where.exe", "node");
     #[cfg(not(target_os = "windows"))]
@@ -231,7 +229,7 @@ fn main() {
                 eprintln!(
                     "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
                      Check the server log at the app data directory for the exact error.\n\
-                     The bundled Node.js runtime could not start."
+                     The system Node.js runtime could not start."
                 );
             });
 

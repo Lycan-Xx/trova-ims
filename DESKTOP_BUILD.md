@@ -138,7 +138,7 @@ This runs the full Tauri build pipeline:
 1. Runs `scripts/tauri-prebuild.mjs`
 2. Builds Next.js with `output: 'standalone'`
 3. Copies `public/` and `.next/static/` into standalone
-4. Bundles everything with Tauri
+4. Bundles the standalone app with Tauri (using system Node.js and WebView2)
 5. Creates platform-specific installers
 
 ## CircleCI Setup
@@ -261,6 +261,8 @@ Typical installer sizes:
 - **Windows (.msi/.exe)**: 160-220 MB
 
 The standalone Next.js server + Rust binary account for most of the size.
+The lean installer does not include a Node.js runtime or offline WebView2
+installer; those are expected to be available on the target machine.
 
 ## Troubleshooting
 
