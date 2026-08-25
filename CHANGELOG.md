@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.2](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.1...v1.0.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** install Windows MSVC Rust target ([3f5ec7f](https://github.com/Lycan-Xx/trova-ims/commit/3f5ec7f9e9d250a52b0e95facc46380156066372))
+
 ## [1.0.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.0...v1.0.1) (2026-08-25)
 
 
