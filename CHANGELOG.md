@@ -1,6 +1,22 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.0](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.4...v1.0.0) (2026-08-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* changed the desktop application identifier from com.lycanforge.trova-ims to com.lycanforge.trova. Previous installations and local databases are intentionally not migrated or compatible.
+
+### Features
+
+* change desktop application identifier ([7df96d1](https://github.com/Lycan-Xx/trova-ims/commit/7df96d1d13366d1ef19d45087942396e72d807f5))
+
+
+### Bug Fixes
+
+* **desktop:** recover stale database locks and disable mac builds ([da22afa](https://github.com/Lycan-Xx/trova-ims/commit/da22afa13da0d544677bc28ae04a4e60128eca29))
+
 ## [0.3.4](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.3...v0.3.4) (2026-08-25)
 
 
