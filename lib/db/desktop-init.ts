@@ -9,7 +9,7 @@
 // replacement for the cloud `pool.query()`.
 
 import { PGlite } from '@electric-sql/pglite'
-import { mkdirSync, openSync, readFileSync, closeSync, existsSync } from 'node:fs'
+import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
@@ -43,6 +43,23 @@ function getDbPath(): string {
 let _db: PGlite | null = null
 let _lockFd: number | null = null
 
+function releaseDesktopLock(lockPath: string) {
+  if (_lockFd !== null) {
+    try { closeSync(_lockFd) } catch {}
+    _lockFd = null
+  }
+  try { unlinkSync(lockPath) } catch {}
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function getDesktopDb(): Promise<PGlite> {
   if (_db) return _db
 
@@ -61,24 +78,32 @@ export async function getDesktopDb(): Promise<PGlite> {
     // O_CREAT | O_EXCL = create only if not exists — atomic on all platforms.
     _lockFd = openSync(lockPath, 'wx')
   } catch {
-    throw new Error(
-      `[desktop-db] Cannot open trova.db — another Trova IMS process is already ` +
-      `running and holds the database lock (${lockPath}).\n` +
-      `Close all other Trova IMS windows and try again. If the problem persists, ` +
-      `delete ${lockPath} manually.`
-    )
+    let ownerPid: number | null = null
+    try {
+      const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as { pid?: number }
+      if (typeof lock.pid === 'number') ownerPid = lock.pid
+    } catch {
+      // An empty/old-format lock cannot identify a live owner. It is safe to
+      // reclaim it; the new lock is created atomically immediately afterward.
+    }
+
+    if (ownerPid === null || !isProcessAlive(ownerPid)) {
+      try { unlinkSync(lockPath) } catch {}
+      _lockFd = openSync(lockPath, 'wx')
+    } else {
+      throw new Error(
+        `[desktop-db] Cannot open trova.db — another Trova IMS process is already ` +
+        `running (PID ${ownerPid}) and holds the database lock (${lockPath}).\n` +
+        `Close that Trova IMS process and try again.`
+      )
+    }
   }
 
+  if (_lockFd === null) throw new Error('[desktop-db] Failed to acquire database lock')
+  writeSync(_lockFd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
+
   // Release the lock file when the Node process exits.
-  process.on('exit', () => {
-    if (_lockFd !== null) {
-      try { closeSync(_lockFd) } catch {}
-      try {
-        const { unlinkSync } = require('node:fs') as typeof import('node:fs')
-        unlinkSync(lockPath)
-      } catch {}
-    }
-  })
+  process.once('exit', () => releaseDesktopLock(lockPath))
 
   _db = new PGlite(dbPath)
 
@@ -87,7 +112,13 @@ export async function getDesktopDb(): Promise<PGlite> {
   // existing installs are untouched.
   const schemaPath = join(process.cwd(), 'scripts', 'desktop-schema.sql')
   const sql = readFileSync(schemaPath, 'utf-8')
-  await _db.exec(sql)
+  try {
+    await _db.exec(sql)
+  } catch (error) {
+    _db = null
+    releaseDesktopLock(lockPath)
+    throw error
+  }
 
   console.log('[desktop-db] Schema applied. Local database is ready.')
   return _db

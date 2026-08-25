@@ -54,9 +54,9 @@ fn find_node() -> String {
         .ok()
         .and_then(|o| {
             if o.status.success() {
-                String::from_utf8(o.stdout).ok().map(|s| {
-                    s.lines().next().unwrap_or("node").trim().to_string()
-                })
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.lines().next().unwrap_or("node").trim().to_string())
             } else {
                 None
             }
@@ -87,9 +87,9 @@ fn spawn_local_server(
     log_path: &std::path::Path,
 ) -> std::io::Result<Child> {
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
-    let server_js      = standalone_dir.join("server.js");
-    let data_dir        = strip_verbatim_prefix(data_dir);
-    let node_bin        = find_node();
+    let server_js = standalone_dir.join("server.js");
+    let data_dir = strip_verbatim_prefix(data_dir);
+    let node_bin = find_node();
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
@@ -106,18 +106,21 @@ fn spawn_local_server(
         ));
     }
 
-    let log_file  = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
     let log_clone = log_file.try_clone()?;
 
     let mut cmd = Command::new(&node_bin);
     cmd.arg(&server_js)
         .current_dir(&standalone_dir)
-        .env("PORT",               SERVER_PORT.to_string())
-        .env("HOSTNAME",           "127.0.0.1")
-        .env("DESKTOP_MODE",       "true")
-        .env("TROVA_DATA_DIR",     &data_dir)
+        .env("PORT", SERVER_PORT.to_string())
+        .env("HOSTNAME", "127.0.0.1")
+        .env("DESKTOP_MODE", "true")
+        .env("TROVA_DATA_DIR", &data_dir)
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
-        .env("PATH",               std::env::var("PATH").unwrap_or_default())
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_clone));
 
@@ -136,11 +139,21 @@ fn kill_server(app: &tauri::AppHandle) {
     if let Some(state) = app.try_state::<ServerProcess>() {
         if let Ok(mut guard) = state.0.lock() {
             if let Some(mut child) = guard.take() {
-                eprintln!("[trova-ims] Shutting down local server (pid {})", child.id());
+                eprintln!(
+                    "[trova-ims] Shutting down local server (pid {})",
+                    child.id()
+                );
                 let _ = child.kill();
                 let _ = child.wait();
             }
         }
+    }
+
+    // Windows may terminate the Node child without allowing Node's exit
+    // handlers to run. Remove the app-specific lock after the child has
+    // exited so the next launch can start normally.
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
     }
 }
 
@@ -177,8 +190,7 @@ fn main() {
                 .app_data_dir()
                 .expect("failed to resolve app data directory");
 
-            std::fs::create_dir_all(&data_dir)
-                .expect("failed to create app data directory");
+            std::fs::create_dir_all(&data_dir).expect("failed to create app data directory");
 
             let log_path = data_dir.join("server.log");
 

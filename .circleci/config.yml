@@ -173,32 +173,6 @@ jobs:
             - << pipeline.parameters.build-profile >>/bundle/deb
             - << pipeline.parameters.build-profile >>/bundle/rpm
 
-  build-macos:
-    executor: macos-builder
-    steps:
-      - checkout
-      - node/install:
-          node-version: "20"
-      - install-rust
-      - install-node-deps
-      - restore_cache:
-          keys:
-            - rust-build-macos-safe-{{ checksum "src-tauri/Cargo.lock" }}
-      - build-tauri-app:
-          bundles: "dmg"
-          profile: << pipeline.parameters.build-profile >>
-      - save_cache:
-          key: rust-build-macos-safe-{{ checksum "src-tauri/Cargo.lock" }}
-          paths:
-            - src-tauri/target
-      - store_artifacts:
-          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
-          destination: macos-build
-      - persist_to_workspace:
-          root: src-tauri/target
-          paths:
-            - << pipeline.parameters.build-profile >>/bundle/dmg
-
   build-windows:
     executor: windows-builder
     steps:
@@ -307,12 +281,6 @@ workflows:
               only:
                 - main
                 - separation-attempt
-      - build-macos:
-          filters:
-            branches:
-              only:
-                - main
-                - separation-attempt
       - build-windows:
           filters:
             branches:
@@ -322,7 +290,6 @@ workflows:
       - collect-artifacts:
           requires:
             - build-linux
-            - build-macos
             - build-windows
           filters:
             branches:
@@ -339,12 +306,6 @@ workflows:
               only: /^v.*/
             branches:
               ignore: /.*/
-      - build-macos:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
       - build-windows:
           filters:
             tags:
@@ -354,7 +315,6 @@ workflows:
       - collect-artifacts:
           requires:
             - build-linux
-            - build-macos
             - build-windows
           filters:
             tags:

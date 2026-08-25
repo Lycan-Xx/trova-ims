@@ -29,9 +29,7 @@ jobs:
           - platform: windows-latest
             name: windows
             bundles: msi,nsis
-          - platform: macos-latest
-            name: macos
-            bundles: dmg
+          # macOS builds are currently disabled to conserve CI resources.
 
     runs-on: ${{ matrix.platform }}
     # Safety net: Rust release builds + Tauri bundling normally finish

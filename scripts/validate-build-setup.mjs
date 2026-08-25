@@ -144,20 +144,16 @@ if (existsSync(circleConfig)) {
   const content = readFileSync(circleConfig, 'utf-8')
   
   // Check executors
-  if (content.includes('linux-builder') && 
-      content.includes('macos-builder') && 
-      content.includes('windows-builder')) {
-    console.log('  ✓ All platform executors configured')
+  if (content.includes('linux-builder') && content.includes('windows-builder')) {
+    console.log('  ✓ Active platform executors configured (Linux, Windows)')
   } else {
     console.error('  ❌ Missing platform executors')
     errors++
   }
   
   // Check jobs
-  if (content.includes('build-linux') && 
-      content.includes('build-macos') && 
-      content.includes('build-windows')) {
-    console.log('  ✓ All platform build jobs configured')
+  if (content.includes('build-linux') && content.includes('build-windows')) {
+    console.log('  ✓ Active platform build jobs configured (Linux, Windows)')
   } else {
     console.error('  ❌ Missing platform build jobs')
     errors++

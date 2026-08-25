@@ -48,9 +48,7 @@ jobs:
           - platform: windows-latest
             name: windows
             bundles: msi,nsis
-          - platform: macos-latest
-            name: macos
-            bundles: dmg
+          # macOS builds are currently disabled to conserve CI resources.
 
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 45
@@ -119,6 +117,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+# macOS release builds are intentionally disabled for now.
       - name: Upload Windows installer
         if: matrix.name == 'windows'
         run: |
@@ -130,11 +129,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload macOS installer
-        if: matrix.name == 'macos'
-        run: |
-          gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            src-tauri/target/release/bundle/dmg/*.dmg \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
