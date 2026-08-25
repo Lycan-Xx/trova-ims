@@ -25,14 +25,6 @@ executors:
       DATABASE_URL: postgres://build:build@localhost:5432/build
       BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
 
-  macos-builder:
-    macos:
-      xcode: 15.3.0
-    resource_class: macos.m1.large.gen1
-    environment:
-      DATABASE_URL: postgres://build:build@localhost:5432/build
-      BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
-
   windows-builder:
     machine:
       image: windows-server-2022-gui:current
@@ -189,27 +181,30 @@ jobs:
             # Install Visual Studio Build Tools (includes required C++ toolchain)
             choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64" -y
             
-            # Install Rust with stable toolchain
-            if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
+            # Install Rust with the native Windows MSVC toolchain.
+            $target = "x86_64-pc-windows-msvc"
+            $toolchain = "stable-$target"
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $env:Path = "$cargoBin;$env:Path"
+
+            if (!(Test-Path (Join-Path $cargoBin "rustup.exe"))) {
               Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
               .\rustup-init.exe -y --default-toolchain stable
               Remove-Item rustup-init.exe
             }
             
-            # Install Windows MSVC target
-            rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
-            rustup default stable-x86_64-pc-windows-msvc
-            rustup target add x86_64-pc-windows-msvc
-            
-            # Set up PATH for Rust
-            $cargoPath = "$env:USERPROFILE\.cargo\bin"
-            $env:Path = "$cargoPath;$env:Path"
+            # Install the target on the exact toolchain that Cargo will use.
+            rustup toolchain install $toolchain --profile minimal --target $target
+            rustup target add $target --toolchain $toolchain
+            rustup default $toolchain
+
+            # Make Rust available to subsequent CircleCI Windows steps too.
             [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
             
             # Verify installation
-            rustc --version
-            rustup show active-toolchain
-            cargo --version
+            rustup run $toolchain rustc --version
+            rustup target list --installed --toolchain $toolchain
+            rustup run $toolchain cargo --version
             echo "Build tools installed successfully"
       - restore_cache:
           keys:
@@ -230,9 +225,12 @@ jobs:
           command: |
             # Discard any target artifacts made with the GNU target. Those
             # artifacts invoke dlltool, which is not part of the MSVC build.
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $env:Path = "$cargoBin;$env:Path"
             $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
             $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
             rustup run $env:RUSTUP_TOOLCHAIN rustc -vV
+            rustup target add $env:CARGO_BUILD_TARGET --toolchain $env:RUSTUP_TOOLCHAIN
             cargo clean --target $env:CARGO_BUILD_TARGET --manifest-path src-tauri/Cargo.toml
             $debugFlag = ""
             if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
