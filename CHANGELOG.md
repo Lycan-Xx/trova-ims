@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.3](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.2...v1.0.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **desktop:** slim packaged runtime dependencies ([24c018c](https://github.com/Lycan-Xx/trova-ims/commit/24c018ce473ceab805932475baef8a6b513d0c94))
+* **desktop:** slim packaged runtime dependencies ([5c06071](https://github.com/Lycan-Xx/trova-ims/commit/5c060719e62329b818d45bbfb3fdf73fc936d5f8))
+
 ## [1.0.2](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.1...v1.0.2) (2026-08-25)
 
 
