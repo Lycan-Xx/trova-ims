@@ -3,6 +3,12 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+const runtime = spawnSync(process.execPath, [path.join(root, 'scripts', 'ensure-node-runtime.mjs')], {
+  cwd: root,
+  stdio: 'inherit',
+})
+if (runtime.status !== 0) process.exit(runtime.status ?? 1)
+
 const sync = spawnSync(process.execPath, [path.join(root, 'scripts', 'sync-desktop-version.mjs')], {
   cwd: root,
   stdio: 'inherit',

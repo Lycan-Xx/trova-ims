@@ -38,10 +38,13 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../.next/standalone": "standalone"
+      "../.next/standalone": "standalone",
+      "../.trova-runtime/node": "node-runtime"
     },
     "windows": {
-      "minimumWebview2Version": "2.0.0",
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
       "wix": {
         "upgradeCode": "7e3f8d12-4a1c-4b9e-8c2f-1d5a6e7b9c0d"
       },
