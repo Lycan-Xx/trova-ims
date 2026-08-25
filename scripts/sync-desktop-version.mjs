@@ -12,14 +12,12 @@ if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
 }
 
 const cargo = readFileSync(cargoPath, 'utf8')
-const updatedCargo = cargo.replace(
-  /(^\[package\][\s\S]*?^version\s*=\s*")[^"]+(")/m,
-  `$1${version}$2`,
-)
+const versionRegex = /(^\[package\][\s\S]*?^version\s*=\s*")[^"]+(")/m
 
-if (updatedCargo === cargo) {
+if (!versionRegex.test(cargo)) {
   throw new Error('Could not find src-tauri/Cargo.toml package version')
 }
 
+const updatedCargo = cargo.replace(versionRegex, `$1${version}$2`)
 writeFileSync(cargoPath, updatedCargo)
 console.log(`[desktop-version] Using version ${version} for the Tauri/Cargo package`)
