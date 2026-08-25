@@ -49,6 +49,7 @@ jobs:
     # actual runtime database connection. Override with repo secrets of
     # the same names if a build should embed different values.
     env:
+      DEBIAN_FRONTEND: noninteractive
       DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgres://build:build@localhost:5432/build' }}
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'build-time-placeholder-not-used-for-signing' }}
 
@@ -78,8 +79,9 @@ jobs:
           # hours on silent timeouts instead of failing fast. Point at the
           # main Ubuntu archive directly before updating.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update -o Acquire::Retries=3
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            -o Dpkg::Options::=--force-confold \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
@@ -100,7 +102,7 @@ jobs:
         # --bundles restricts output to the formats that work on each
         # runner without extra setup (no AppImage on Linux CI).
         run: >
-          npx tauri build
+          npm run desktop:build --
           ${{ inputs.profile == 'debug' && '--debug' || '' }}
           --bundles ${{ matrix.bundles }}
 

@@ -20,6 +20,7 @@ executors:
       image: ubuntu-2204:current
     resource_class: large
     environment:
+      DEBIAN_FRONTEND: noninteractive
       # Placeholder secrets - override with CircleCI project environment variables
       DATABASE_URL: postgres://build:build@localhost:5432/build
       BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
@@ -68,6 +69,7 @@ commands:
       - run:
           name: Install Rust
           command: |
+            export DEBIAN_FRONTEND=noninteractive
             if ! command -v rustc &> /dev/null; then
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
               echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> $BASH_ENV
@@ -89,7 +91,7 @@ commands:
             # Retry apt-get update up to 3 times
             for i in 1 2 3; do
               echo "Attempt $i: Updating package lists..."
-              if sudo apt-get update; then
+              if sudo env DEBIAN_FRONTEND=noninteractive apt-get update -o Acquire::Retries=3; then
                 break
               elif [ $i -lt 3 ]; then
                 echo "Attempt $i failed, retrying..."
@@ -100,7 +102,8 @@ commands:
               fi
             done
             
-            sudo apt-get install -y \
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              -o Dpkg::Options::=--force-confold \
               libwebkit2gtk-4.1-dev \
               libgtk-3-dev \
               libayatana-appindicator3-dev \
@@ -134,7 +137,7 @@ commands:
             echo "Profile: << parameters.profile >>"
             
             set -e  # Exit on any error
-            npx tauri build ${DEBUG_FLAG} --bundles << parameters.bundles >> || {
+            npm run desktop:build -- ${DEBUG_FLAG} --bundles << parameters.bundles >> || {
               echo "Build failed, checking for common issues..."
               exit 1
             }
@@ -153,13 +156,12 @@ jobs:
       - install-node-deps
       - restore_cache:
           keys:
-            - rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-linux-
+            - rust-build-linux-safe-{{ checksum "src-tauri/Cargo.lock" }}
       - build-tauri-app:
           bundles: "deb,rpm"
           profile: << pipeline.parameters.build-profile >>
       - save_cache:
-          key: rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
+          key: rust-build-linux-safe-{{ checksum "src-tauri/Cargo.lock" }}
           paths:
             - src-tauri/target
       - store_artifacts:
@@ -181,13 +183,12 @@ jobs:
       - install-node-deps
       - restore_cache:
           keys:
-            - rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-macos-
+            - rust-build-macos-safe-{{ checksum "src-tauri/Cargo.lock" }}
       - build-tauri-app:
           bundles: "dmg"
           profile: << pipeline.parameters.build-profile >>
       - save_cache:
-          key: rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
+          key: rust-build-macos-safe-{{ checksum "src-tauri/Cargo.lock" }}
           paths:
             - src-tauri/target
       - store_artifacts:
@@ -222,6 +223,8 @@ jobs:
             }
             
             # Install Windows MSVC target
+            rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+            rustup default stable-x86_64-pc-windows-msvc
             rustup target add x86_64-pc-windows-msvc
             
             # Set up PATH for Rust
@@ -231,6 +234,7 @@ jobs:
             
             # Verify installation
             rustc --version
+            rustup show active-toolchain
             cargo --version
             echo "Build tools installed successfully"
       - restore_cache:
@@ -246,19 +250,21 @@ jobs:
             - node_modules
       - restore_cache:
           keys:
-            - rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-windows-
+            - rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}
       - run:
           name: Build Tauri app
           command: |
+            # Discard any target artifacts made with the GNU target. Those
+            # artifacts invoke dlltool, which is not part of the MSVC build.
+            cargo clean --manifest-path src-tauri/Cargo.toml
             $debugFlag = ""
             if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
               $debugFlag = "--debug"
             }
-            npx tauri build $debugFlag --bundles msi,nsis
+            npm run desktop:build -- $debugFlag --bundles msi,nsis
           no_output_timeout: 30m
       - save_cache:
-          key: rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
+          key: rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}
           paths:
             - src-tauri/target
       - store_artifacts:

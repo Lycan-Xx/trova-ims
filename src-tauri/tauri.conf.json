@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Trova IMS",
-  "version": "0.1.0",
   "identifier": "com.lycanforge.trova-ims",
   "build": {
     "frontendDist": "splash",
@@ -42,10 +41,12 @@
       "../.next/standalone": "standalone"
     },
     "windows": {
+      "minimumWebview2Version": "2.0.0",
+      "wix": {
+        "upgradeCode": "7e3f8d12-4a1c-4b9e-8c2f-1d5a6e7b9c0d"
+      },
       "nsis": {
-        "upgradeCode": "7e3f8d12-4a1c-4b9e-8c2f-1d5a6e7b9c0d",
-        "installerMode": "currentUser",
-        "minimumWebviewVersion": "2.0.0"
+        "installMode": "currentUser"
       }
     }
   }

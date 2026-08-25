@@ -15,7 +15,7 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:dev:external": "tauri dev --no-dev-server",
-    "desktop:build": "tauri build"
+    "desktop:build": "node scripts/desktop-build.mjs"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1075.0",
