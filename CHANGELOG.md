@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.3.4](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.3...v0.3.4) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** force Windows MSVC target and macOS artifact upload ([f97c31a](https://github.com/Lycan-Xx/trova-ims/commit/f97c31a727c596433fd3b1316b683626ed126f98))
+* **desktop:** migrate existing local database schema ([3866c31](https://github.com/Lycan-Xx/trova-ims/commit/3866c3129efb9b63429e5bf65c32bf1634484a66))
+
 ## [0.3.3](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.2...v0.3.3) (2026-08-25)
 
 
