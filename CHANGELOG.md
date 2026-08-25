@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [0.3.3](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.2...v0.3.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* sync-desktop-version no longer false-errors when versions match ([b27133c](https://github.com/Lycan-Xx/trova-ims/commit/b27133ce4f6bc77ceae086e83aadabb613996702))
+* sync-desktop-version no longer false-errors when versions match ([0a55ca9](https://github.com/Lycan-Xx/trova-ims/commit/0a55ca9af8379621aad077c65685b1bd60ec0589))
+
 ## [0.3.2](https://github.com/Lycan-Xx/trova-ims/compare/v0.3.1...v0.3.2) (2026-08-25)
 
 
