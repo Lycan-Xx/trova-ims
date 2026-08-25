@@ -152,6 +152,26 @@ CREATE TABLE IF NOT EXISTS invitations (
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 
+-- Forward migrations for databases created by older desktop builds.
+-- CREATE TABLE IF NOT EXISTS does not alter an existing table, so these
+-- statements preserve existing local data while adding current columns.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'NGN';
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS pack_size INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS total_purchase_cost NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS cost_per_unit NUMERIC(12, 2);
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS cost_price NUMERIC(12, 2);
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS selling_price_override NUMERIC(12, 2);
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS selling_price NUMERIC(12, 2);
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS is_consignment BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE batches ADD COLUMN IF NOT EXISTS received_by_id UUID;
+
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashier_id UUID;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12, 2);
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS change_given NUMERIC(12, 2);
+
 CREATE INDEX IF NOT EXISTS idx_products_store_id     ON products(store_id);
 CREATE INDEX IF NOT EXISTS idx_products_category_id  ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_sku          ON products(sku);
