@@ -12,6 +12,10 @@ parameters:
     type: enum
     enum: ["release", "debug"]
     default: "release"
+  windows-variant:
+    type: enum
+    enum: ["slim", "bundled", "all"]
+    default: "all"
 
 # Define executors for different platforms
 executors:
@@ -236,7 +240,7 @@ jobs:
             if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
               $debugFlag = "--debug"
             }
-            npm run desktop:build -- $debugFlag --target $env:CARGO_BUILD_TARGET --bundles msi,nsis
+            npm run desktop:build -- --variant << pipeline.parameters.windows-variant >> $debugFlag --target $env:CARGO_BUILD_TARGET --bundles msi,nsis
           no_output_timeout: 30m
       - save_cache:
           key: rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}
@@ -270,15 +274,10 @@ jobs:
 workflows:
   version: 2
 
-  # Main workflow - runs on main and separation-attempt branches
+  # Main workflow - automatic builds are Windows-only. Linux/macOS desktop
+  # packages are built from the manual GitHub Actions workflow when needed.
   build-desktop-apps:
     jobs:
-      - build-linux:
-          filters:
-            branches:
-              only:
-                - main
-                - separation-attempt
       - build-windows:
           filters:
             branches:
@@ -287,7 +286,6 @@ workflows:
                 - separation-attempt
       - collect-artifacts:
           requires:
-            - build-linux
             - build-windows
           filters:
             branches:
@@ -295,15 +293,9 @@ workflows:
                 - main
                 - separation-attempt
 
-  # Tag-based workflow - runs only on git tags
+  # Tag-based workflow - automatic release tag builds are Windows-only.
   build-on-tags:
     jobs:
-      - build-linux:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
       - build-windows:
           filters:
             tags:
@@ -312,7 +304,6 @@ workflows:
               ignore: /.*/
       - collect-artifacts:
           requires:
-            - build-linux
             - build-windows
           filters:
             tags:

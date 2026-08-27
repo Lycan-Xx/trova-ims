@@ -3931,7 +3931,7 @@ dependencies = [
 
 [[package]]
 name = "trova-ims"
-version = "0.3.4"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",

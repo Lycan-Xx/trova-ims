@@ -145,7 +145,7 @@ if (existsSync(circleConfig)) {
   
   // Check executors
   if (content.includes('linux-builder') && content.includes('windows-builder')) {
-    console.log('  ✓ Active platform executors configured (Linux, Windows)')
+    console.log('  ✓ Platform executors configured (Linux manual, Windows automatic)')
   } else {
     console.error('  ❌ Missing platform executors')
     errors++
@@ -153,7 +153,7 @@ if (existsSync(circleConfig)) {
   
   // Check jobs
   if (content.includes('build-linux') && content.includes('build-windows')) {
-    console.log('  ✓ Active platform build jobs configured (Linux, Windows)')
+    console.log('  ✓ Platform build jobs configured (Linux manual, Windows automatic)')
   } else {
     console.error('  ❌ Missing platform build jobs')
     errors++
