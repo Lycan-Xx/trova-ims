@@ -36,15 +36,82 @@ const SERVER_PORT: u16 = 47821;
 /// of being left as an orphaned background process.
 struct ServerProcess(Mutex<Option<Child>>);
 
+/// Replace older native app processes before the single-instance plugin runs.
+/// This is intentionally scoped to the Trova IMS executable name so an update
+/// can recover from an older build without touching unrelated applications.
+#[cfg(windows)]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id();
+    let output = match Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq trova-ims.exe", "/FO", "CSV", "/NH"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("[trova-ims] Could not inspect previous instances: {err}");
+            return;
+        }
+    };
+
+    let processes = String::from_utf8_lossy(&output.stdout);
+    for line in processes.lines() {
+        let Some(pid_text) = line.split(',').nth(1) else {
+            continue;
+        };
+        let pid_text = pid_text.trim_matches('"');
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+        if pid == current_pid {
+            continue;
+        }
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
+    }
+
+    // Give Windows a moment to release the old WebView and local server port
+    // before the new instance initializes its Tauri single-instance mutex.
+    thread::sleep(Duration::from_millis(150));
+}
+
+#[cfg(not(windows))]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id().to_string();
+    let output = match Command::new("pgrep").args(["-x", "trova-ims"]).output() {
+        Ok(output) => output,
+        Err(_) => return,
+    };
+
+    for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
+        let pid_text = pid_text.trim();
+        if pid_text.is_empty() || pid_text == current_pid {
+            continue;
+        }
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let _ = Command::new("kill").args(["-TERM", pid_text]).output();
+    }
+
+    thread::sleep(Duration::from_millis(150));
+}
+
 /// Locate the bundled Node.js binary when one exists, otherwise use the
 /// system installation. Lean packages intentionally rely on the user's
 /// existing Node.js installation instead of shipping another copy.
 fn find_node(resource_dir: &std::path::Path) -> String {
-    let bundled = resource_dir.join("node-runtime").join(if cfg!(target_os = "windows") {
-        "node.exe"
-    } else {
-        "bin/node"
-    });
+    let bundled = resource_dir
+        .join("node-runtime")
+        .join(if cfg!(target_os = "windows") {
+            "node.exe"
+        } else {
+            "bin/node"
+        });
     if bundled.exists() {
         return bundled.to_string_lossy().into_owned();
     }
@@ -166,12 +233,13 @@ fn kill_server(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    terminate_previous_instances();
+
     let mut builder = tauri::Builder::default().manage(ServerProcess(Mutex::new(None)));
 
-    // Must be registered first — see Tauri's single-instance docs. On a
-    // second launch attempt, the closure below runs in the *original*
-    // instance instead of a new process being spawned, so we just focus
-    // the existing window rather than starting a second competing server.
+    // Keep the plugin as a final race guard. Startup replacement above handles
+    // normal upgrades/relaunches; this prevents two new copies from starting
+    // simultaneously after both inspect the process list.
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
