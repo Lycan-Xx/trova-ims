@@ -40,36 +40,50 @@ function getDbPath(): string {
 // message. A simple lock file gives a much clearer error and prevents
 // the WASM crash.
 
-let _db: PGlite | null = null
-let _dbInit: Promise<PGlite> | null = null
-let _lockFd: number | null = null
+type DesktopDbState = {
+  db: PGlite | null
+  init: Promise<PGlite> | null
+  lockFd: number | null
+}
+
+// Next's production server can evaluate this module in multiple route/action
+// bundles. Keep the singleton on the process global so those copies share one
+// PGlite instance and one lock instead of opening the same database twice.
+const desktopGlobal = globalThis as typeof globalThis & {
+  __trovaImsDesktopDbState?: DesktopDbState
+}
+const desktopDbState = desktopGlobal.__trovaImsDesktopDbState ??= {
+  db: null,
+  init: null,
+  lockFd: null,
+}
 
 function releaseDesktopLock(lockPath: string) {
   // Only the process that still owns the descriptor may remove the lock.
   // This prevents an exit handler from deleting a newer process's lock after
   // an initialization failure has already released and reacquired it.
-  if (_lockFd === null) return
-  try { closeSync(_lockFd) } catch {}
-  _lockFd = null
+  if (desktopDbState.lockFd === null) return
+  try { closeSync(desktopDbState.lockFd) } catch {}
+  desktopDbState.lockFd = null
   try { unlinkSync(lockPath) } catch {}
 }
 
 export async function getDesktopDb(): Promise<PGlite> {
-  if (_db) return _db
+  if (desktopDbState.db) return desktopDbState.db
 
   // Health polling can issue several requests while the first PGlite
   // instance is still applying the schema. Share one initialization promise
   // so those requests cannot race each other into the WASM runtime.
-  if (_dbInit) return _dbInit
+  if (desktopDbState.init) return desktopDbState.init
 
   const init = initializeDesktopDb()
-  _dbInit = init
+  desktopDbState.init = init
   try {
     return await init
   } finally {
     // A failed initialization must not poison every later request with the
     // same rejected promise. Successful initialization is cached in _db.
-    if (_dbInit === init) _dbInit = null
+    if (desktopDbState.init === init) desktopDbState.init = null
   }
 }
 
@@ -87,7 +101,7 @@ async function initializeDesktopDb(): Promise<PGlite> {
   // runtime crash with "RuntimeError: Aborted()".
   try {
     // O_CREAT | O_EXCL = create only if not exists — atomic on all platforms.
-    _lockFd = openSync(lockPath, 'wx')
+    desktopDbState.lockFd = openSync(lockPath, 'wx')
   } catch {
     let lockDetails = ''
     try {
@@ -105,8 +119,8 @@ async function initializeDesktopDb(): Promise<PGlite> {
     )
   }
 
-  if (_lockFd === null) throw new Error('[desktop-db] Failed to acquire database lock')
-  writeSync(_lockFd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
+  if (desktopDbState.lockFd === null) throw new Error('[desktop-db] Failed to acquire database lock')
+  writeSync(desktopDbState.lockFd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }))
 
   // Release the lock file when the Node process exits.
   process.once('exit', () => releaseDesktopLock(lockPath))
@@ -127,11 +141,11 @@ async function initializeDesktopDb(): Promise<PGlite> {
   try {
     db = new PGlite(dbPath)
     await applySchema(db)
-    _db = db
+    desktopDbState.db = db
   } catch (error) {
     console.error(`[desktop-db] Failed to initialize local database: ${error}`)
     try { await db?.close() } catch {}
-    _db = null
+    desktopDbState.db = null
     releaseDesktopLock(lockPath)
     throw error
   }
