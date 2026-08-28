@@ -85,6 +85,7 @@ fn terminate_previous_instances() {
     // Give Windows a moment to release the old WebView and local server port
     // before the new instance initializes its Tauri single-instance mutex.
     thread::sleep(Duration::from_millis(150));
+    terminate_orphaned_server();
 }
 
 #[cfg(not(windows))]
@@ -109,6 +110,62 @@ fn terminate_previous_instances() {
     }
 
     thread::sleep(Duration::from_millis(150));
+    terminate_orphaned_server();
+}
+
+/// Kill a leftover standalone server from an earlier app process. The Tauri
+/// process normally owns and cleans up its child, but a forced termination can
+/// orphan Node while leaving the fixed server port occupied. Restricting this
+/// to Trova's private port avoids touching unrelated Node applications.
+#[cfg(windows)]
+fn terminate_orphaned_server() {
+    let output = match Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("[trova-ims] Could not inspect the desktop server port: {err}");
+            return;
+        }
+    };
+
+    let port_suffix = format!(":{SERVER_PORT}");
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 5
+            || fields[0] != "TCP"
+            || !fields[1].ends_with(&port_suffix)
+            || fields[3] != "LISTENING"
+        {
+            continue;
+        }
+
+        let Ok(pid) = fields[4].parse::<u32>() else {
+            continue;
+        };
+        eprintln!("[trova-ims] Replacing orphaned local server (pid {pid})");
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
+    }
+}
+
+#[cfg(not(windows))]
+fn terminate_orphaned_server() {
+    let output = match Command::new("lsof")
+        .args(["-tiTCP:47821", "-sTCP:LISTEN"])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return,
+    };
+
+    for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
+        let pid_text = pid_text.trim();
+        if pid_text.is_empty() {
+            continue;
+        }
+        eprintln!("[trova-ims] Replacing orphaned local server (pid {pid_text})");
+        let _ = Command::new("kill").args(["-TERM", pid_text]).output();
+    }
 }
 
 /// Locate the bundled Node.js binary when one exists, otherwise use the
