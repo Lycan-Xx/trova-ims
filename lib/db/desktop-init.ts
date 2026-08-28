@@ -9,7 +9,7 @@
 // replacement for the cloud `pool.query()`.
 
 import { PGlite } from '@electric-sql/pglite'
-import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync, rmSync } from 'node:fs'
+import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
@@ -45,20 +45,13 @@ let _dbInit: Promise<PGlite> | null = null
 let _lockFd: number | null = null
 
 function releaseDesktopLock(lockPath: string) {
-  if (_lockFd !== null) {
-    try { closeSync(_lockFd) } catch {}
-    _lockFd = null
-  }
+  // Only the process that still owns the descriptor may remove the lock.
+  // This prevents an exit handler from deleting a newer process's lock after
+  // an initialization failure has already released and reacquired it.
+  if (_lockFd === null) return
+  try { closeSync(_lockFd) } catch {}
+  _lockFd = null
   try { unlinkSync(lockPath) } catch {}
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
 }
 
 export async function getDesktopDb(): Promise<PGlite> {
@@ -69,8 +62,15 @@ export async function getDesktopDb(): Promise<PGlite> {
   // so those requests cannot race each other into the WASM runtime.
   if (_dbInit) return _dbInit
 
-  _dbInit = initializeDesktopDb()
-  return _dbInit
+  const init = initializeDesktopDb()
+  _dbInit = init
+  try {
+    return await init
+  } finally {
+    // A failed initialization must not poison every later request with the
+    // same rejected promise. Successful initialization is cached in _db.
+    if (_dbInit === init) _dbInit = null
+  }
 }
 
 async function initializeDesktopDb(): Promise<PGlite> {
@@ -89,25 +89,20 @@ async function initializeDesktopDb(): Promise<PGlite> {
     // O_CREAT | O_EXCL = create only if not exists — atomic on all platforms.
     _lockFd = openSync(lockPath, 'wx')
   } catch {
-    let ownerPid: number | null = null
+    let lockDetails = ''
     try {
-      const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as { pid?: number }
-      if (typeof lock.pid === 'number') ownerPid = lock.pid
+      const lock = JSON.parse(readFileSync(lockPath, 'utf8')) as { pid?: number; startedAt?: string }
+      if (typeof lock.pid === 'number') {
+        lockDetails = ` (PID ${lock.pid}${lock.startedAt ? `, started ${lock.startedAt}` : ''})`
+      }
     } catch {
-      // An empty/old-format lock cannot identify a live owner. It is safe to
-      // reclaim it; the new lock is created atomically immediately afterward.
+      // Keep the generic message when the lock file is incomplete or unreadable.
     }
 
-    if (ownerPid === null || !isProcessAlive(ownerPid)) {
-      try { unlinkSync(lockPath) } catch {}
-      _lockFd = openSync(lockPath, 'wx')
-    } else {
-      throw new Error(
-        `[desktop-db] Cannot open trova.db — another Trova IMS process is already ` +
-        `running (PID ${ownerPid}) and holds the database lock (${lockPath}).\n` +
-        `Close that Trova IMS process and try again.`
-      )
-    }
+    throw new Error(
+      `[desktop-db] Cannot open trova.db — another Trova IMS process may already ` +
+      `be using the database${lockDetails}. Close Trova IMS and try again.`
+    )
   }
 
   if (_lockFd === null) throw new Error('[desktop-db] Failed to acquire database lock')
@@ -134,24 +129,15 @@ async function initializeDesktopDb(): Promise<PGlite> {
     await applySchema(db)
     _db = db
   } catch (error) {
-    console.error(`[desktop-db] Failed to initialize local database (${error}). Attempting self-healing recovery...`)
+    console.error(`[desktop-db] Failed to initialize local database: ${error}`)
     try { await db?.close() } catch {}
     _db = null
-
-    try {
-      rmSync(dbPath, { recursive: true, force: true })
-      console.log('[desktop-db] Corrupted database directory removed. Re-initializing fresh database...')
-      db = new PGlite(dbPath)
-      await applySchema(db)
-      _db = db
-    } catch (retryError) {
-      console.error('[desktop-db] Database recovery failed:', retryError)
-      releaseDesktopLock(lockPath)
-      throw error
-    }
+    releaseDesktopLock(lockPath)
+    throw error
   }
 
   console.log('[desktop-db] Schema applied. Local database is ready.')
+  if (!db) throw new Error('[desktop-db] Database initialization produced no instance')
   return db
 }
 

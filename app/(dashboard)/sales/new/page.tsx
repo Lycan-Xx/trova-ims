@@ -45,6 +45,7 @@ export default function NewSalePage() {
   const searchRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestRef = React.useRef(0)
 
   // Cart state
   const [cart, setCart] = React.useState<CartEntry[]>([])
@@ -90,23 +91,49 @@ export default function NewSalePage() {
   // Debounced product search
   React.useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    const requestId = ++searchRequestRef.current
     setNotFoundBarcode(null)
 
     if (!searchQuery.trim()) {
       setSearchResults([])
       setSearchOpen(false)
+      setSearchLoading(false)
       return
     }
 
     debounceRef.current = setTimeout(async () => {
       setSearchLoading(true)
-      const res = await getProducts({ search: searchQuery.trim(), page: 1 })
-      setSearchLoading(false)
-      if (res.success) {
-        setSearchResults(res.data.products.slice(0, 8))
-        setSearchOpen(true)
+      try {
+        const res = await getProducts({ search: searchQuery.trim(), page: 1 })
+        if (requestId !== searchRequestRef.current) return
+        if (res.success) {
+          setSearchResults(res.data.products.slice(0, 8))
+          setSearchOpen(true)
+        } else {
+          // Action returned a handled error (e.g. DB unavailable)
+          setSearchResults([])
+          setSearchOpen(false)
+          toast.error(`Search failed: ${res.error}`)
+        }
+      } catch {
+        if (requestId !== searchRequestRef.current) return
+        // Unexpected / network-level error — clear results silently
+        setSearchResults([])
+        setSearchOpen(false)
+        toast.error('Could not search products. Please try again.')
+      } finally {
+        // Always clear the loading spinner, even if the action throws
+        if (requestId === searchRequestRef.current) setSearchLoading(false)
       }
     }, 200)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (requestId === searchRequestRef.current) {
+        searchRequestRef.current += 1
+        setSearchLoading(false)
+      }
+    }
   }, [searchQuery])
 
   // Keep effective prices in sync with whatever's currently visible: the

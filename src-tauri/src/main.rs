@@ -118,16 +118,17 @@ fn terminate_previous_instances() {
 /// orphan Node while leaving the fixed server port occupied. Restricting this
 /// to Trova's private port avoids touching unrelated Node applications.
 #[cfg(windows)]
-fn terminate_orphaned_server() {
+fn terminate_orphaned_server() -> bool {
     let output = match Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
         Ok(output) => output,
         Err(err) => {
             eprintln!("[trova-ims] Could not inspect the desktop server port: {err}");
-            return;
+            return false;
         }
     };
 
     let port_suffix = format!(":{SERVER_PORT}");
+    let mut cleared = true;
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         let fields: Vec<&str> = line.split_whitespace().collect();
         if fields.len() < 5
@@ -142,30 +143,41 @@ fn terminate_orphaned_server() {
             continue;
         };
         eprintln!("[trova-ims] Replacing orphaned local server (pid {pid})");
-        let _ = Command::new("taskkill")
+        let result = Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output();
+        if !matches!(result, Ok(output) if output.status.success()) {
+            cleared = false;
+        }
     }
+
+    cleared
 }
 
 #[cfg(not(windows))]
-fn terminate_orphaned_server() {
+fn terminate_orphaned_server() -> bool {
     let output = match Command::new("lsof")
         .args(["-tiTCP:47821", "-sTCP:LISTEN"])
         .output()
     {
-        Ok(output) if output.status.success() => output,
-        _ => return,
+        Ok(output) => output,
+        Err(_) => return false,
     };
 
+    let mut cleared = true;
     for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
         let pid_text = pid_text.trim();
         if pid_text.is_empty() {
             continue;
         }
         eprintln!("[trova-ims] Replacing orphaned local server (pid {pid_text})");
-        let _ = Command::new("kill").args(["-TERM", pid_text]).output();
+        let result = Command::new("kill").args(["-TERM", pid_text]).output();
+        if !matches!(result, Ok(output) if output.status.success()) {
+            cleared = false;
+        }
     }
+
+    cleared
 }
 
 /// Locate the bundled Node.js binary when one exists, otherwise use the
@@ -358,9 +370,11 @@ fn spawn_local_server(
 
 /// Kill the tracked server process, if any. Called on app exit.
 fn kill_server(app: &tauri::AppHandle) {
+    let mut killed_server = false;
     if let Some(state) = app.try_state::<ServerProcess>() {
         if let Ok(mut guard) = state.0.lock() {
             if let Some(mut child) = guard.take() {
+                killed_server = true;
                 eprintln!(
                     "[trova-ims] Shutting down local server (pid {})",
                     child.id()
@@ -374,8 +388,10 @@ fn kill_server(app: &tauri::AppHandle) {
     // Windows may terminate the Node child without allowing Node's exit
     // handlers to run. Remove the app-specific lock after the child has
     // exited so the next launch can start normally.
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+    if killed_server {
+        if let Ok(data_dir) = app.path().app_data_dir() {
+            let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+        }
     }
 }
 
@@ -415,6 +431,13 @@ fn main() {
                 .expect("failed to resolve app data directory");
 
             std::fs::create_dir_all(&data_dir).expect("failed to create app data directory");
+
+            // Startup cleanup has already inspected Trova's private port. Any
+            // remaining app lock can be reclaimed only when that inspection
+            // succeeded, so a missing diagnostic tool cannot remove a live lock.
+            if terminate_orphaned_server() {
+                let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+            }
 
             let log_path = data_dir.join("server.log");
 
