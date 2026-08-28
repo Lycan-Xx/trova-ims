@@ -132,10 +132,9 @@ CREATE TABLE IF NOT EXISTS sale_items (
   sale_id         UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
   product_id      UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   batch_id        UUID REFERENCES batches(id) ON DELETE SET NULL,
-  quantity        INTEGER NOT NULL,
+  qty_sold        INTEGER NOT NULL,
   unit_price      NUMERIC(12, 2) NOT NULL,
-  total_price     NUMERIC(12, 2) NOT NULL,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  line_total      NUMERIC(12, 2) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS invitations (
@@ -176,6 +175,32 @@ ALTER TABLE batches ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DE
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashier_id UUID;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12, 2);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS change_given NUMERIC(12, 2);
+
+-- Align databases created by early desktop builds with the canonical sales
+-- contract used by app/actions/sales.ts. The conditional renames preserve
+-- existing sale quantities and totals without deleting local sales history.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sale_items' AND column_name = 'quantity'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sale_items' AND column_name = 'qty_sold'
+  ) THEN
+    ALTER TABLE sale_items RENAME COLUMN quantity TO qty_sold;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sale_items' AND column_name = 'total_price'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'sale_items' AND column_name = 'line_total'
+  ) THEN
+    ALTER TABLE sale_items RENAME COLUMN total_price TO line_total;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_products_store_id     ON products(store_id);
 CREATE INDEX IF NOT EXISTS idx_products_category_id  ON products(category_id);
