@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.5](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.4...v1.2.5) (2026-08-28)
+
+
+### Bug Fixes
+
+* **printer:** send valid receipts and track live status ([b3af7bb](https://github.com/Lycan-Xx/trova-ims/commit/b3af7bb07de4c56c8bd5d7a7fd759a27f6596e25))
+
 ## [1.2.4](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.3...v1.2.4) (2026-08-28)
 
 
