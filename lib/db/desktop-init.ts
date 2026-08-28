@@ -9,7 +9,7 @@
 // replacement for the cloud `pool.query()`.
 
 import { PGlite } from '@electric-sql/pglite'
-import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync } from 'node:fs'
+import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync, rmSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
@@ -122,22 +122,33 @@ async function initializeDesktopDb(): Promise<PGlite> {
   // is held at this point, so no other Trova server can be using this DB.
   try { unlinkSync(join(dbPath, 'postmaster.pid')) } catch {}
 
+  const applySchema = async (instance: PGlite) => {
+    const schemaPath = join(process.cwd(), 'scripts', 'desktop-schema.sql')
+    const sql = readFileSync(schemaPath, 'utf-8')
+    await instance.exec(sql)
+  }
+
   let db: PGlite | null = null
   try {
     db = new PGlite(dbPath)
-
-    // Run schema on every start — all statements are IF NOT EXISTS / ON CONFLICT
-    // DO NOTHING, so this is fully idempotent. New installs get a fresh DB;
-    // existing installs are untouched.
-    const schemaPath = join(process.cwd(), 'scripts', 'desktop-schema.sql')
-    const sql = readFileSync(schemaPath, 'utf-8')
-    await db.exec(sql)
+    await applySchema(db)
     _db = db
   } catch (error) {
+    console.error(`[desktop-db] Failed to initialize local database (${error}). Attempting self-healing recovery...`)
     try { await db?.close() } catch {}
     _db = null
-    releaseDesktopLock(lockPath)
-    throw error
+
+    try {
+      rmSync(dbPath, { recursive: true, force: true })
+      console.log('[desktop-db] Corrupted database directory removed. Re-initializing fresh database...')
+      db = new PGlite(dbPath)
+      await applySchema(db)
+      _db = db
+    } catch (retryError) {
+      console.error('[desktop-db] Database recovery failed:', retryError)
+      releaseDesktopLock(lockPath)
+      throw error
+    }
   }
 
   console.log('[desktop-db] Schema applied. Local database is ready.')
