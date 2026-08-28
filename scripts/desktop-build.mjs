@@ -34,9 +34,19 @@ function buildProfile(args) {
   return args.includes('--debug') || args.includes('-d') ? 'debug' : 'release'
 }
 
+function buildTarget(args) {
+  const targetIndex = args.indexOf('--target')
+  if (targetIndex !== -1 && args[targetIndex + 1]) return args[targetIndex + 1]
+
+  const targetArgument = args.find((arg) => arg.startsWith('--target='))
+  return targetArgument ? targetArgument.slice('--target='.length) : null
+}
+
 function renameWindowsArtifacts(variant, args) {
   const profile = buildProfile(args)
-  const bundleRoot = path.join(root, 'src-tauri', 'target', profile, 'bundle')
+  const target = buildTarget(args)
+  const targetRoot = target ? path.join('target', target) : 'target'
+  const bundleRoot = path.join(root, 'src-tauri', targetRoot, profile, 'bundle')
   for (const folder of ['msi', 'nsis']) {
     const dir = path.join(bundleRoot, folder)
     if (!existsSync(dir)) continue

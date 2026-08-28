@@ -94,8 +94,8 @@ jobs:
       - name: Upload Windows installers
         run: |
           $assets = @(
-            (Get-ChildItem src-tauri/target/release/bundle/msi/*windows-${{ matrix.variant }}*.msi).FullName
-            (Get-ChildItem src-tauri/target/release/bundle/nsis/*windows-${{ matrix.variant }}*.exe).FullName
+            (Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*windows-${{ matrix.variant }}*.msi).FullName
+            (Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*windows-${{ matrix.variant }}*.exe).FullName
           )
           gh release upload ${{ needs.release-please.outputs.tag_name }} $assets --clobber
         shell: pwsh
