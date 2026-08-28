@@ -55,4 +55,11 @@ cpSync(
   path.join(scriptsDest, 'desktop-schema.sql'),
 )
 
+if (process.env.TROVA_SKIP_DESKTOP_SMOKE === '1') {
+  console.log('[tauri-prebuild] Skipping standalone desktop smoke test.')
+} else {
+  console.log('[tauri-prebuild] Smoke-testing the standalone desktop server…')
+  execSync('node scripts/smoke-desktop-standalone.mjs', { cwd: root, stdio: 'inherit' })
+}
+
 console.log('[tauri-prebuild] Done — .next/standalone is ready to bundle.')

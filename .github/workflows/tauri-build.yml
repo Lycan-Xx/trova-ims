@@ -13,6 +13,14 @@ on:
           - release
           - debug
         default: release
+      windows_variant:
+        description: "Windows package variant"
+        type: choice
+        options:
+          - slim
+          - bundled
+          - all
+        default: slim
 
 jobs:
   build:
@@ -101,13 +109,14 @@ jobs:
         # runner without extra setup (no AppImage on Linux CI).
         run: >
           npm run desktop:build --
+          --variant ${{ matrix.name == 'windows' && inputs.windows_variant || 'slim' }}
           ${{ inputs.profile == 'debug' && '--debug' || '' }}
           --bundles ${{ matrix.bundles }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: trova-ims-${{ matrix.name }}-${{ inputs.profile }}
+          name: trova-ims-${{ matrix.name }}-${{ matrix.name == 'windows' && inputs.windows_variant || 'slim' }}-${{ inputs.profile }}
           path: |
             src-tauri/target/${{ inputs.profile }}/bundle/**
           if-no-files-found: error

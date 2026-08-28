@@ -1,6 +1,6 @@
 [package]
 name = "trova-ims"
-version = "0.3.4" # x-release-please-version
+version = "1.0.0" # x-release-please-version
 description = "Trova IMS — offline desktop shell"
 edition = "2021"
 rust-version = "1.77"
@@ -15,9 +15,7 @@ serde_json = "1"
 url = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
-# Ensures only one instance of the app can run at a time. A second launch
-# attempt hands off to the already-running instance (focuses its window)
-# instead of spawning a competing Node server on the same fixed port.
+# Final race guard after startup replacement terminates older app versions.
 tauri-plugin-single-instance = "2"
 
 [[bin]]

@@ -5,7 +5,7 @@
 //     http://localhost:3000 directly. This file does nothing extra beyond
 //     single-instance handling.
 //   - Packaged app: spawns the bundled .next/standalone/server.js, polls
-//     until it accepts connections, then navigates away from the splash.
+//     its desktop health endpoint, then navigates away from the splash.
 //
 // Process lifecycle: the spawned Node server is tracked in managed state
 // and explicitly killed when the app exits (RunEvent::ExitRequested). The
@@ -16,7 +16,9 @@
 // code the next time the app launches.
 
 use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
@@ -31,20 +33,95 @@ use tauri::{Manager, Url};
 /// If this port changes, that file needs the matching update or the
 /// frontend's Tauri detection silently breaks.
 const SERVER_PORT: u16 = 47821;
+const STARTUP_ATTEMPTS: u16 = 200;
+const STARTUP_POLL_MS: u64 = 150;
+
+struct HealthStatus {
+    healthy: bool,
+    status_line: String,
+    body: String,
+}
 
 /// Holds the spawned Node server so it can be killed on app exit instead
 /// of being left as an orphaned background process.
 struct ServerProcess(Mutex<Option<Child>>);
 
+/// Replace older native app processes before the single-instance plugin runs.
+/// This is intentionally scoped to the Trova IMS executable name so an update
+/// can recover from an older build without touching unrelated applications.
+#[cfg(windows)]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id();
+    let output = match Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq trova-ims.exe", "/FO", "CSV", "/NH"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("[trova-ims] Could not inspect previous instances: {err}");
+            return;
+        }
+    };
+
+    let processes = String::from_utf8_lossy(&output.stdout);
+    for line in processes.lines() {
+        let Some(pid_text) = line.split(',').nth(1) else {
+            continue;
+        };
+        let pid_text = pid_text.trim_matches('"');
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+        if pid == current_pid {
+            continue;
+        }
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
+    }
+
+    // Give Windows a moment to release the old WebView and local server port
+    // before the new instance initializes its Tauri single-instance mutex.
+    thread::sleep(Duration::from_millis(150));
+}
+
+#[cfg(not(windows))]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id().to_string();
+    let output = match Command::new("pgrep").args(["-x", "trova-ims"]).output() {
+        Ok(output) => output,
+        Err(_) => return,
+    };
+
+    for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
+        let pid_text = pid_text.trim();
+        if pid_text.is_empty() || pid_text == current_pid {
+            continue;
+        }
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let _ = Command::new("kill").args(["-TERM", pid_text]).output();
+    }
+
+    thread::sleep(Duration::from_millis(150));
+}
+
 /// Locate the bundled Node.js binary when one exists, otherwise use the
 /// system installation. Lean packages intentionally rely on the user's
 /// existing Node.js installation instead of shipping another copy.
 fn find_node(resource_dir: &std::path::Path) -> String {
-    let bundled = resource_dir.join("node-runtime").join(if cfg!(target_os = "windows") {
-        "node.exe"
-    } else {
-        "bin/node"
-    });
+    let bundled = resource_dir
+        .join("node-runtime")
+        .join(if cfg!(target_os = "windows") {
+            "node.exe"
+        } else {
+            "bin/node"
+        });
     if bundled.exists() {
         return bundled.to_string_lossy().into_owned();
     }
@@ -89,6 +166,85 @@ fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
     path.to_path_buf()
 }
 
+fn local_server_request(path: &str) -> Result<HealthStatus, String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", SERVER_PORT))
+        .map_err(|err| format!("could not connect to local server: {err}"))?;
+    let timeout = Some(Duration::from_secs(2));
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+
+    let request = format!(
+        "GET {path} HTTP/1.1\r\n\
+         Host: 127.0.0.1:{SERVER_PORT}\r\n\
+         Accept: application/json\r\n\
+         Connection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|err| format!("could not write health request: {err}"))?;
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .map_err(|err| format!("could not read health response: {err}"))?;
+
+    let response = String::from_utf8_lossy(&response);
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .unwrap_or_else(|| (response.as_ref(), ""));
+    let status_line = headers.lines().next().unwrap_or("").to_string();
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok());
+
+    let expected_version = format!("\"version\":\"{}\"", env!("CARGO_PKG_VERSION"));
+    let healthy =
+        status == Some(200) && body.contains("\"ok\":true") && body.contains(&expected_version);
+
+    Ok(HealthStatus {
+        healthy,
+        status_line,
+        body: body.trim().to_string(),
+    })
+}
+
+fn show_startup_error(handle: &tauri::AppHandle, message: &str, log_path: &Path) {
+    let message = serde_json::to_string(message)
+        .unwrap_or_else(|_| "\"Trova IMS could not start.\"".to_string());
+    let log_path = serde_json::to_string(&log_path.display().to_string())
+        .unwrap_or_else(|_| "\"server.log\"".to_string());
+    let script = format!(
+        r#"
+        (() => {{
+          const message = {message};
+          const logPath = {log_path};
+          const render = () => {{
+            if (window.trovaStartupError) {{
+              window.trovaStartupError(message, logPath);
+              return;
+            }}
+            const wrap = document.querySelector('.wrap') || document.body;
+            if (!wrap) return;
+            wrap.classList?.add('error');
+            wrap.innerHTML = '<h1>Trova IMS could not start</h1><p class="message"></p><div class="log"></div>';
+            wrap.querySelector('.message').textContent = message;
+            wrap.querySelector('.log').textContent = 'Server log: ' + logPath;
+          }};
+          if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', render, {{ once: true }});
+          }} else {{
+            render();
+          }}
+        }})();
+        "#
+    );
+
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.eval(script);
+    }
+}
+
 fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
@@ -127,6 +283,7 @@ fn spawn_local_server(
         .env("HOSTNAME", "127.0.0.1")
         .env("DESKTOP_MODE", "true")
         .env("TROVA_DATA_DIR", &data_dir)
+        .env("TROVA_DESKTOP_VERSION", env!("CARGO_PKG_VERSION"))
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .stdout(Stdio::from(log_file))
@@ -166,12 +323,13 @@ fn kill_server(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    terminate_previous_instances();
+
     let mut builder = tauri::Builder::default().manage(ServerProcess(Mutex::new(None)));
 
-    // Must be registered first — see Tauri's single-instance docs. On a
-    // second launch attempt, the closure below runs in the *original*
-    // instance instead of a new process being spawned, so we just focus
-    // the existing window rather than starting a second competing server.
+    // Keep the plugin as a final race guard. Startup replacement above handles
+    // normal upgrades/relaunches; this prevents two new copies from starting
+    // simultaneously after both inspect the process list.
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -205,6 +363,11 @@ fn main() {
             match spawn_local_server(&resource_dir, &data_dir, &log_path) {
                 Err(err) => {
                     eprintln!("[trova-ims] Failed to start local server: {err}");
+                    show_startup_error(
+                        app.handle(),
+                        &format!("The local desktop server could not start: {err}"),
+                        &log_path,
+                    );
                     return Ok(());
                 }
                 Ok(child) => {
@@ -213,24 +376,44 @@ fn main() {
             }
 
             let handle = app.handle().clone();
+            let startup_log_path = log_path.clone();
             thread::spawn(move || {
-                for attempt in 0..200 {
-                    if TcpStream::connect(("127.0.0.1", SERVER_PORT)).is_ok() {
-                        eprintln!("[trova-ims] Server ready after ~{}ms.", attempt * 150);
-                        if let Some(window) = handle.get_webview_window("main") {
-                            let url = Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
+                let mut last_probe = String::from("health endpoint did not respond");
+                for attempt in 0..STARTUP_ATTEMPTS {
+                    match local_server_request("/api/desktop/health") {
+                        Ok(status) if status.healthy => {
+                            eprintln!(
+                                "[trova-ims] Server health ready after ~{}ms.",
+                                attempt as u64 * STARTUP_POLL_MS
+                            );
+                            if let Some(window) = handle.get_webview_window("main") {
+                                let url = Url::parse(&format!(
+                                    "http://127.0.0.1:{SERVER_PORT}/dashboard"
+                                ))
                                 .expect("invalid local server URL");
-                            let _ = window.navigate(url);
+                                let _ = window.navigate(url);
+                            }
+                            return;
                         }
-                        return;
+                        Ok(status) => {
+                            last_probe = format!("{} {}", status.status_line, status.body);
+                        }
+                        Err(err) => {
+                            last_probe = err;
+                        }
                     }
-                    thread::sleep(Duration::from_millis(150));
+                    thread::sleep(Duration::from_millis(STARTUP_POLL_MS));
                 }
+
+                let message =
+                    format!("Trova IMS could not finish starting. Last health check: {last_probe}");
                 eprintln!(
-                    "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
-                     Check the server log at the app data directory for the exact error.\n\
-                     The system Node.js runtime could not start."
+                    "[trova-ims] Server did not become healthy on port {SERVER_PORT} within 30 s.\n\
+                     Check the server log at {} for the exact error.\n\
+                     {message}",
+                    startup_log_path.display()
                 );
+                show_startup_error(&handle, &message, &startup_log_path);
             });
 
             Ok(())

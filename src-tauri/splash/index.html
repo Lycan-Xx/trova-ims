@@ -15,6 +15,7 @@
         color: #9a9a9f;
       }
       .wrap { text-align: center; }
+      .wrap.error { max-width: 560px; padding: 24px; }
       .dot {
         width: 8px;
         height: 8px;
@@ -27,8 +28,46 @@
         0%, 100% { opacity: 0.35; transform: scale(0.85); }
         50% { opacity: 1; transform: scale(1); }
       }
+      h1 {
+        margin: 0 0 10px;
+        color: #f4f4f5;
+        font-size: 18px;
+        font-weight: 650;
+      }
       p { font-size: 13px; letter-spacing: 0.02em; }
+      .message {
+        margin: 0 auto;
+        max-width: 520px;
+        color: #d4d4d8;
+        line-height: 1.55;
+      }
+      .log {
+        margin-top: 16px;
+        padding: 10px 12px;
+        border: 1px solid #2f2f35;
+        border-radius: 6px;
+        background: #141417;
+        color: #a1a1aa;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }
     </style>
+    <script>
+      window.trovaStartupError = function (message, logPath) {
+        const wrap = document.querySelector('.wrap')
+        if (!wrap) return
+        wrap.classList.add('error')
+        wrap.innerHTML = [
+          '<h1>Trova IMS could not start</h1>',
+          '<p class="message"></p>',
+          '<div class="log"></div>',
+        ].join('')
+        wrap.querySelector('.message').textContent = message
+        wrap.querySelector('.log').textContent = 'Server log: ' + logPath
+      }
+    </script>
   </head>
   <body>
     <div class="wrap">
