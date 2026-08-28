@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.5](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.4...v1.0.5) (2026-08-28)
+
+
+### Bug Fixes
+
+* **ci:** resolve target-specific Windows artifacts ([21c8d23](https://github.com/Lycan-Xx/trova-ims/commit/21c8d23bdf057f76029d26c33336962959ebdc11))
+
 ## [1.0.4](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.3...v1.0.4) (2026-08-28)
 
 
