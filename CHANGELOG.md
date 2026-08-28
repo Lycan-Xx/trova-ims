@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.0.4](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.3...v1.0.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** build Windows variants and gate startup health ([66e6f5e](https://github.com/Lycan-Xx/trova-ims/commit/66e6f5e155ea9954f968b13cb4cde08193073705))
+* **desktop:** replace stale app instances on launch ([e1fb3dd](https://github.com/Lycan-Xx/trova-ims/commit/e1fb3dd3ff3670fe730f8466f66f9a6dee12bda0))
+
 ## [1.0.3](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.2...v1.0.3) (2026-08-25)
 
 
