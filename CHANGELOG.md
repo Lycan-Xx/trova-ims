@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.3](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.2...v1.2.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** share database state across server bundles ([6345fa0](https://github.com/Lycan-Xx/trova-ims/commit/6345fa018a95c2f5f2d9484524f26316f4d142b0))
+
 ## [1.2.2](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.1...v1.2.2) (2026-08-28)
 
 
