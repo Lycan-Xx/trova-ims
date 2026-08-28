@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.0...v1.2.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** clean up orphaned local servers ([1b1d2d6](https://github.com/Lycan-Xx/trova-ims/commit/1b1d2d66b6bce121336973462682956d0ce6595f))
+
 ## [1.2.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.1.0...v1.2.0) (2026-08-28)
 
 
