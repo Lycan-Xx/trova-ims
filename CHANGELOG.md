@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.2](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.1...v1.2.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** make local startup and sales search resilient ([2314d1f](https://github.com/Lycan-Xx/trova-ims/commit/2314d1f06841457dd4591430232b1a869d59a749))
+
 ## [1.2.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.0...v1.2.1) (2026-08-28)
 
 
