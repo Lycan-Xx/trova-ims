@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.1.0...v1.2.0) (2026-08-28)
+
+
+### Features
+
+* implement PGlite database initialization and locking for DESKTOP_MODE ([1d837dc](https://github.com/Lycan-Xx/trova-ims/commit/1d837dcdb52ccddbcb22085698e672f9d20c5e3b))
+
 ## [1.1.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.5...v1.1.0) (2026-08-28)
 
 
