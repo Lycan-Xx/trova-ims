@@ -42,7 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
-        run: gh release edit "$RELEASE_TAG" --draft=true --prerelease=true
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=true --prerelease=true
 
   # ── Step 3: build Windows candidate installers ────────────────────────────
   # Only runs when release-please actually created a new release (i.e.
@@ -141,6 +141,6 @@ jobs:
             echo "No Windows installer assets were downloaded."
             exit 1
           fi
-          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false
 
