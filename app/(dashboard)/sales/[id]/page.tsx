@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { CheckCircle2, ArrowLeft } from 'lucide-react'
 import { getSaleById } from '@/app/actions/sales'
 import { ReceiptDownloadButton } from '@/components/sales/receipt-download-button'
+import { PrintReceiptButton } from '@/components/sales/print-receipt-button'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol } from '@/lib/currency'
 
@@ -225,6 +226,14 @@ export default async function SaleConfirmationPage({
 
         {/* Action buttons */}
         <div className="flex gap-3">
+          {/* Desktop-only: renders null on web */}
+          <PrintReceiptButton
+            sale={sale}
+            storeName={storeResult.success ? storeResult.data.name : undefined}
+            storeAddress={storeResult.success ? storeResult.data.address ?? undefined : undefined}
+            storePhone={storeResult.success ? storeResult.data.phone ?? undefined : undefined}
+          />
+
           <ReceiptDownloadButton
             sale={sale}
             storeName={storeResult.success ? storeResult.data.name : undefined}

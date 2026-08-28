@@ -338,6 +338,7 @@ fn main() {
                 let _ = window.unminimize();
             }
         }));
+        builder = builder.plugin(tauri_plugin_thermal_printer::init());
     }
 
     let app = builder

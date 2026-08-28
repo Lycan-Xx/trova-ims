@@ -41,6 +41,7 @@ function getDbPath(): string {
 // the WASM crash.
 
 let _db: PGlite | null = null
+let _dbInit: Promise<PGlite> | null = null
 let _lockFd: number | null = null
 
 function releaseDesktopLock(lockPath: string) {
@@ -63,6 +64,16 @@ function isProcessAlive(pid: number): boolean {
 export async function getDesktopDb(): Promise<PGlite> {
   if (_db) return _db
 
+  // Health polling can issue several requests while the first PGlite
+  // instance is still applying the schema. Share one initialization promise
+  // so those requests cannot race each other into the WASM runtime.
+  if (_dbInit) return _dbInit
+
+  _dbInit = initializeDesktopDb()
+  return _dbInit
+}
+
+async function initializeDesktopDb(): Promise<PGlite> {
   const dbPath = getDbPath()
   const lockPath = dbPath + '.lock'
   console.log(`[desktop-db] Opening local database at ${dbPath}`)
@@ -105,23 +116,32 @@ export async function getDesktopDb(): Promise<PGlite> {
   // Release the lock file when the Node process exits.
   process.once('exit', () => releaseDesktopLock(lockPath))
 
-  _db = new PGlite(dbPath)
+  // PGlite persists PostgreSQL runtime files inside the database directory.
+  // A forcibly terminated desktop process can leave postmaster.pid behind;
+  // PGlite then aborts before it can open the database. Trova's app-level lock
+  // is held at this point, so no other Trova server can be using this DB.
+  try { unlinkSync(join(dbPath, 'postmaster.pid')) } catch {}
 
-  // Run schema on every start — all statements are IF NOT EXISTS / ON CONFLICT
-  // DO NOTHING, so this is fully idempotent. New installs get a fresh DB;
-  // existing installs are untouched.
-  const schemaPath = join(process.cwd(), 'scripts', 'desktop-schema.sql')
-  const sql = readFileSync(schemaPath, 'utf-8')
+  let db: PGlite | null = null
   try {
-    await _db.exec(sql)
+    db = new PGlite(dbPath)
+
+    // Run schema on every start — all statements are IF NOT EXISTS / ON CONFLICT
+    // DO NOTHING, so this is fully idempotent. New installs get a fresh DB;
+    // existing installs are untouched.
+    const schemaPath = join(process.cwd(), 'scripts', 'desktop-schema.sql')
+    const sql = readFileSync(schemaPath, 'utf-8')
+    await db.exec(sql)
+    _db = db
   } catch (error) {
+    try { await db?.close() } catch {}
     _db = null
     releaseDesktopLock(lockPath)
     throw error
   }
 
   console.log('[desktop-db] Schema applied. Local database is ready.')
-  return _db
+  return db
 }
 
 // ── query() drop-in ───────────────────────────────────────────────────────────

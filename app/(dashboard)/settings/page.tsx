@@ -4,6 +4,7 @@ import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
+import { PrinterSetup } from '@/components/settings/printer-setup'
 
 export const metadata = { title: 'Settings — StockSmart' }
 
@@ -42,7 +43,23 @@ export default async function SettingsPage() {
         </section>
       )}
 
-      {/* Section B — Team Management */}
+      {/* Section B — Printer Setup (desktop only — PrinterSetup self-guards) */}
+      {isOwner && (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+            Printer Setup
+          </h2>
+          <PrinterSetup />
+        </section>
+      )}
+
+      {/* Section C — Team Management */}
       {isOwner && (
         <section>
           <TeamManagement isOwner={isOwner} />

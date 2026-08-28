@@ -1,9 +1,10 @@
 'use client'
 
-import { Bell, LogOut, ScanBarcode } from 'lucide-react'
+import { Bell, LogOut, Printer, ScanBarcode } from 'lucide-react'
 import { useSession, signOut } from '@/lib/auth-client'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { usePrinterStatus } from '@/lib/hooks/use-printer-status'
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return '?'
@@ -71,6 +72,13 @@ export function Topbar() {
   const initials = getInitials(session?.user?.name)
   const scannerActive = useScannerActivity()
 
+  // Tauri-only: printer status indicator
+  const [isTauri, setIsTauri] = React.useState(false)
+  React.useEffect(() => {
+    setIsTauri(typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window)
+  }, [])
+  const printerStatus = usePrinterStatus()
+
   async function handleSignOut() {
     await signOut()
     router.push('/sign-in')
@@ -116,6 +124,57 @@ export function Topbar() {
 
       {/* Right: bell + avatar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Printer status indicator — desktop only */}
+        {isTauri && (
+          <div
+            role="status"
+            aria-label={
+              printerStatus.online
+                ? 'Printer connected'
+                : printerStatus.configured
+                ? 'Printer configured but offline'
+                : 'No printer configured'
+            }
+            title={
+              printerStatus.online
+                ? 'Thermal printer connected and ready'
+                : printerStatus.configured
+                ? 'Configured printer not found — check connection'
+                : 'No thermal printer configured — go to Settings → Printer Setup'
+            }
+            style={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              borderRadius: 6,
+              color: printerStatus.online
+                ? '#22c55e'
+                : 'var(--text-muted)',
+              transition: 'color 200ms ease',
+            }}
+          >
+            <Printer size={17} strokeWidth={1.75} />
+            {printerStatus.online && (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: 5,
+                  right: 5,
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: '#22c55e',
+                  border: '1.5px solid var(--bg-nav)',
+                }}
+              />
+            )}
+          </div>
+        )}
+
         {/* Scanner activity indicator */}
         <div
           role="status"

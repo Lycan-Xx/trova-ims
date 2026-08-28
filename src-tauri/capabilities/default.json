@@ -6,5 +6,10 @@
   "remote": {
     "urls": ["http://127.0.0.1:47821/*", "http://localhost:3000/*"]
   },
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "thermal-printer:allow-list-thermal-printers",
+    "thermal-printer:allow-print-thermal-printer",
+    "thermal-printer:allow-test-thermal-printer"
+  ]
 }
