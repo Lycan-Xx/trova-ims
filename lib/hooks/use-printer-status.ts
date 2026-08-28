@@ -11,10 +11,16 @@
  */
 
 import * as React from 'react'
-import { getPrinterSettings } from '@/lib/printer-settings'
+import {
+  getPrinterSettings,
+  PRINTER_SETTINGS_CHANGED_EVENT,
+  type PrinterSettings,
+} from '@/lib/printer-settings'
 
 export interface PrinterInfo {
   name: string
+  identifier?: string
+  status?: string
   [key: string]: unknown
 }
 
@@ -30,6 +36,17 @@ export interface PrinterStatus {
 }
 
 const POLL_INTERVAL_MS = 10_000
+const OFFLINE_STATUSES = new Set([
+  'offline',
+  'error',
+  'out_of_paper',
+  'outofpaper',
+  'paper_out',
+  'paperout',
+  'paused',
+  'unavailable',
+  'unknown',
+])
 
 /** True only when running inside the Tauri webview. */
 function isTauriEnv(): boolean {
@@ -56,8 +73,22 @@ export function usePrinterStatus(): PrinterStatus {
   const [printers, setPrinters] = React.useState<PrinterInfo[]>([])
   const [loading, setLoading] = React.useState(true)
   const [isTauri, setIsTauri] = React.useState(false)
+  const [settings, setSettings] = React.useState<PrinterSettings>(() => getPrinterSettings())
 
   // Detect Tauri once on mount (avoids SSR mismatch).
+  React.useEffect(() => {
+    function refreshSettings() {
+      setSettings(getPrinterSettings())
+    }
+
+    window.addEventListener(PRINTER_SETTINGS_CHANGED_EVENT, refreshSettings)
+    window.addEventListener('storage', refreshSettings)
+    return () => {
+      window.removeEventListener(PRINTER_SETTINGS_CHANGED_EVENT, refreshSettings)
+      window.removeEventListener('storage', refreshSettings)
+    }
+  }, [])
+
   React.useEffect(() => {
     setIsTauri(isTauriEnv())
   }, [])
@@ -87,21 +118,28 @@ export function usePrinterStatus(): PrinterStatus {
     }
   }, [isTauri])
 
-  const settings = React.useMemo(getPrinterSettings, [])
-
   const configured =
     (settings.type === 'usb' && !!settings.usbPrinterName) ||
     (settings.type === 'tcp' && !!settings.tcpAddress)
 
-  const online =
-    configured &&
-    settings.type === 'usb' &&
-    !!settings.usbPrinterName &&
-    printers.some(
-      (p) =>
-        p.name?.toLowerCase() ===
-        settings.usbPrinterName!.toLowerCase(),
-    )
+  const configuredName =
+    settings.type === 'usb'
+      ? settings.usbPrinterName
+      : settings.type === 'tcp' && settings.tcpAddress
+      ? `${settings.tcpAddress}:${settings.tcpPort}`
+      : null
+
+  const online = configured && !!configuredName && printers.some((printer) => {
+    const target = configuredName.toLowerCase()
+    const names = [printer.name, printer.identifier]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.toLowerCase())
+    const matches = names.some((value) => value === target || value.endsWith(target))
+    const status = typeof printer.status === 'string'
+      ? printer.status.trim().toLowerCase().replace(/\s+/g, '_')
+      : ''
+    return matches && !OFFLINE_STATUSES.has(status)
+  })
 
   return { configured, online, printers, loading }
 }

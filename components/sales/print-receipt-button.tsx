@@ -11,6 +11,13 @@ import {
 import { buildEscPosReceipt } from '@/lib/receipt/escpos-renderer'
 import { useCurrency } from '@/lib/currency-context'
 
+type PrintJobRequest = {
+  printer: string
+  paper_size: 'Mm58' | 'Mm80'
+  options: { code_page: number }
+  sections: unknown[]
+}
+
 interface PrintReceiptButtonProps {
   sale: SaleDetail
   storeName?: string
@@ -74,18 +81,25 @@ export function PrintReceiptButton({
       // Dynamic import keeps Tauri SDK out of the web bundle.
       const { invoke } = await import('@tauri-apps/api/core')
 
-      if (settings.type === 'usb') {
-        await invoke('plugin:thermal-printer|print_thermal_printer', {
-          printerName: settings.usbPrinterName,
-          sections,
-        })
-      } else {
-        // TCP — plugin uses same invoke but may accept address fields.
-        await invoke('plugin:thermal-printer|print_thermal_printer', {
-          printerName: `TCP:${settings.tcpAddress}:${settings.tcpPort}`,
-          sections,
-        })
+      const printer =
+        settings.type === 'usb'
+          ? settings.usbPrinterName
+          : `${settings.tcpAddress}:${settings.tcpPort}`
+
+      if (!printer) {
+        throw new Error('The selected printer is no longer configured.')
       }
+
+      const printJobRequest: PrintJobRequest = {
+        printer,
+        paper_size: settings.paperWidth === 58 ? 'Mm58' : 'Mm80',
+        options: { code_page: 0 },
+        sections,
+      }
+
+      await invoke('plugin:thermal-printer|print_thermal_printer', {
+        printJobRequest,
+      })
 
       toast.success('Receipt printed.')
     } catch (err) {

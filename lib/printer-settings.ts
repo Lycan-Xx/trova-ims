@@ -29,6 +29,8 @@ const KEYS = {
   paperWidth: 'trova_printer_paper_width',
 } as const
 
+export const PRINTER_SETTINGS_CHANGED_EVENT = 'trova:printer-settings-changed'
+
 const DEFAULTS: PrinterSettings = {
   type: null,
   usbPrinterName: null,
@@ -43,6 +45,12 @@ function ls(): Storage | null {
     return window.localStorage
   } catch {
     return null
+  }
+}
+
+function notifySettingsChanged(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(PRINTER_SETTINGS_CHANGED_EVENT))
   }
 }
 
@@ -95,12 +103,14 @@ export function savePrinterSettings(patch: Partial<PrinterSettings>): void {
   if ('paperWidth' in patch && patch.paperWidth != null) {
     store.setItem(KEYS.paperWidth, String(patch.paperWidth))
   }
+  notifySettingsChanged()
 }
 
 export function clearPrinterSettings(): void {
   const store = ls()
   if (!store) return
   Object.values(KEYS).forEach((k) => store.removeItem(k))
+  notifySettingsChanged()
 }
 
 /**

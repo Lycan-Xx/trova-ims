@@ -35,13 +35,12 @@ interface TextStyles {
   bold?: boolean
   underline?: boolean
   align?: Align
-  width?: number   // character width multiplier (1 or 2)
-  height?: number  // character height multiplier (1 or 2)
+  size?: 'normal' | 'height' | 'width' | 'double'
 }
 
 type PrintSection =
   | { Text: { text: string; styles?: TextStyles } }
-  | { Separator: { symbol?: string } }
+  | { Line: { character: string } }
   | { Cut: { mode?: 'full' | 'partial'; feed?: number } }
 
 export type EscPosReceipt = PrintSection[]
@@ -78,7 +77,7 @@ function text(
 }
 
 function separator(symbol = '-'): PrintSection {
-  return { Separator: { symbol } }
+  return { Line: { character: symbol } }
 }
 
 /**
@@ -144,7 +143,7 @@ export function buildEscPosReceipt(
 
   // ── Store header ──────────────────────────────────────────────────
   if (storeName) {
-    sections.push(text(storeName, { bold: true, align: 'center', height: 2 }))
+    sections.push(text(storeName, { bold: true, align: 'center', size: 'double' }))
   }
   if (storeAddress) {
     sections.push(text(storeAddress, { align: 'center' }))
