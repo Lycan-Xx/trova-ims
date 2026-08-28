@@ -2,9 +2,8 @@ name: Release
 
 # Runs on every push to main. release-please opens (and keeps updated)
 # a "Release PR" that bumps the version and builds the changelog from
-# conventional commits. Merging that PR triggers the second job, which
-# runs the Tauri build and attaches the installers to the GitHub Release
-# that release-please just created.
+# conventional commits. Merging that PR builds release candidates first;
+# publication is held behind the protected production-release environment.
 on:
   push:
     branches:
@@ -32,11 +31,24 @@ jobs:
           extra-files: |
             src-tauri/Cargo.toml
 
-  # ── Step 2: build Windows installers and attach them to the release ───────
+  # ── Step 2: keep the release private while candidates are tested ──────────
+  prepare-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark release as draft candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=true --prerelease=true
+
+  # ── Step 3: build Windows candidate installers ────────────────────────────
   # Only runs when release-please actually created a new release (i.e.
   # the Release PR was just merged). Skipped on regular feature pushes.
-  build-and-upload:
-    needs: release-please
+  build-candidate:
+    needs: [release-please, prepare-release]
     if: needs.release-please.outputs.release_created == 'true'
     strategy:
       fail-fast: false
@@ -88,17 +100,47 @@ jobs:
           --target x86_64-pc-windows-msvc
           --bundles ${{ matrix.bundles }}
 
-      # Upload each Windows installer variant directly to the GitHub Release
-      # that release-please created. Users download from the Releases page
-      # rather than from workflow artifact zips.
-      - name: Upload Windows installers
-        run: |
-          $assets = @(
-            (Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*windows-${{ matrix.variant }}*.msi).FullName
-            (Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*windows-${{ matrix.variant }}*.exe).FullName
-          )
-          gh release upload ${{ needs.release-please.outputs.tag_name }} $assets --clobber
-        shell: pwsh
+      # These artifacts are the release candidates. Test them manually before
+      # approving the protected publish-release job below.
+      - name: Upload Windows candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trova-ims-${{ matrix.name }}
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    needs: [release-please, prepare-release, build-candidate]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-release
+    concurrency:
+      group: production-release
+      cancel-in-progress: false
+
+    steps:
+      - name: Download tested candidate artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trova-ims-windows-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish Windows installers
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          mapfile -t assets < <(find release-assets -type f \( -name '*.msi' -o -name '*.exe' \) -print)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No Windows installer assets were downloaded."
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
 

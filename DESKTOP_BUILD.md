@@ -190,16 +190,17 @@ Windows release variants:
    ```
 4. Click "Trigger Pipeline"
 
-Automatic CircleCI branch/tag builds are Windows-only and produce both
-`slim` and `bundled` variants by default. Linux/macOS desktop packages are
+Automatic CircleCI branch builds are Windows-only and produce validation
+artifacts. Release tags are built and published by the GitHub Actions release
+workflow only, after the candidate installers are manually tested and the
+protected release environment is approved. Linux/macOS desktop packages are
 manual-only through the GitHub Actions desktop build workflow.
 
-#### Method 2: Git Tags
+#### Method 2: Releases
 
-```bash
-git tag v0.1.4
-git push origin v0.1.4
-```
+Merge the release-please PR on `main`. GitHub Actions builds the Windows slim
+and bundled candidates, pauses for manual testing and approval, then publishes
+the installers to the GitHub Release.
 
 #### Method 3: Branch Push
 
@@ -208,12 +209,6 @@ Push to `main` or `separation-attempt`:
 ```bash
 git push origin main
 ```
-
-#### Method 4: Scheduled (Nightly)
-
-Automatic nightly builds run at midnight UTC on `main` branch.
-
-To disable: Comment out the `nightly-builds` workflow in `.circleci/config.yml`.
 
 ### Monitoring Builds
 

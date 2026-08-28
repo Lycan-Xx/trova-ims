@@ -247,13 +247,13 @@ jobs:
           paths:
             - src-tauri/target
       - store_artifacts:
-          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
+          path: src-tauri/target/x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle
           destination: windows-build
       - persist_to_workspace:
           root: src-tauri/target
           paths:
-            - << pipeline.parameters.build-profile >>/bundle/msi
-            - << pipeline.parameters.build-profile >>/bundle/nsis
+            - x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle/msi
+            - x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle/nsis
 
   collect-artifacts:
     docker:
@@ -293,20 +293,5 @@ workflows:
                 - main
                 - separation-attempt
 
-  # Tag-based workflow - automatic release tag builds are Windows-only.
-  build-on-tags:
-    jobs:
-      - build-windows:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-      - collect-artifacts:
-          requires:
-            - build-windows
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
+  # Release tags are built and published by GitHub Actions after manual
+  # testing and approval. CircleCI intentionally does not build releases.
