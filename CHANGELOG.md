@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.1.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.5...v1.1.0) (2026-08-28)
+
+
+### Features
+
+* implement thermal printer integration for desktop with connection status and configuration UI ([bc7da04](https://github.com/Lycan-Xx/trova-ims/commit/bc7da044a76fd5ded511ac76421aa315fda8b7a8))
+
 ## [1.0.5](https://github.com/Lycan-Xx/trova-ims/compare/v1.0.4...v1.0.5) (2026-08-28)
 
 
