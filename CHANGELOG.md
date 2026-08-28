@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.2.4](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.3...v1.2.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** align sale item schema with sales actions ([ee438ab](https://github.com/Lycan-Xx/trova-ims/commit/ee438aba519466db3bc06078a6252d70eba745fc))
+
 ## [1.2.3](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.2...v1.2.3) (2026-08-28)
 
 
