@@ -9,7 +9,9 @@ import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { getProducts, getProductByBarcode } from '@/app/actions/products'
 import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
+import { getStoreSettings } from '@/app/actions/settings'
 import type { ProductWithStock } from '@/app/actions/products'
+import { CUSTOMER_DISPLAY_EVENT, type CustomerDisplayCart } from '@/lib/customer-display'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ function getQtyError(product: ProductWithStock, qty: number): string | null {
 export default function NewSalePage() {
   const router = useRouter()
   const { currency } = useCurrency()
+  const [storeName, setStoreName] = React.useState('Trova IMS')
 
   // Search state
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -88,6 +91,12 @@ export default function NewSalePage() {
   // Autofocus on mount
   React.useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  React.useEffect(() => {
+    void getStoreSettings().then((result) => {
+      if (result.success) setStoreName(result.data.name)
+    })
   }, [])
 
   // Close dropdown on outside click
@@ -207,6 +216,22 @@ export default function NewSalePage() {
     (sum, e) => sum + e.qty * getPrice(e.product),
     0,
   )
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    const payload: CustomerDisplayCart = {
+      storeName,
+      currencySymbol: getCurrencySymbol(currency),
+      items: cart.map((entry) => ({
+        name: entry.product.name,
+        quantity: entry.qty,
+        unitPrice: getPrice(entry.product),
+        total: entry.qty * getPrice(entry.product),
+      })),
+      total: cartTotal,
+    }
+    void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, payload))
+  }, [cart, cartTotal, currency, effectivePrices, storeName])
 
   const amountPaidNum = parseFloat(amountPaid) || 0
   const change = paymentMethod === 'cash' ? amountPaidNum - cartTotal : null

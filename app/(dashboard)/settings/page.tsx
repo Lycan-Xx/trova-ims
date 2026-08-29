@@ -5,6 +5,7 @@ import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
 import { PrinterSetup } from '@/components/settings/printer-setup'
+import { CustomerDisplaySetup } from '@/components/customer-display/customer-display-setup'
 import packageJson from '@/package.json'
 
 export const metadata = { title: 'Settings — StockSmart' }
@@ -59,6 +60,8 @@ export default async function SettingsPage() {
           <PrinterSetup />
         </section>
       )}
+
+      {isOwner && <CustomerDisplaySetup />}
 
       {/* Section C — Team Management */}
       {isOwner && (
