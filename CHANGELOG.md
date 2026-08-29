@@ -1,6 +1,24 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.3.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.5...v1.3.0) (2026-08-29)
+
+
+### Features
+
+* **display:** add manual customer order window ([800e1c9](https://github.com/Lycan-Xx/trova-ims/commit/800e1c94a066bc2fac725eedf1ddeea07ff22322))
+* **intake:** collapse completed intake lines ([b8eaf8a](https://github.com/Lycan-Xx/trova-ims/commit/b8eaf8ae82b2fd4d02da8559b2ceee6bc3a14cd4))
+* **printer:** show live print activity in header ([3bebdbb](https://github.com/Lycan-Xx/trova-ims/commit/3bebdbbc208d08e0bf101e6c15c420fc4c18aabf))
+* **products:** support sellable products without stock tracking ([6907e7e](https://github.com/Lycan-Xx/trova-ims/commit/6907e7e6299aaf8a4905bb2bdcb9897e284faa1e))
+* **sales:** default history to today with day grouping ([132a477](https://github.com/Lycan-Xx/trova-ims/commit/132a4777b2487a36a67137346f3b4ba0d8195a6b))
+* **sales:** retain local records and export retained CSV ([0d8d518](https://github.com/Lycan-Xx/trova-ims/commit/0d8d5184fb1491b7cb69b6a76bc3995e572f22a3))
+* **settings:** add support notice and technician diagnostics ([e7eb22e](https://github.com/Lycan-Xx/trova-ims/commit/e7eb22e0307cc2fb1af0f17f386ca7c7b795048f))
+
+
+### Bug Fixes
+
+* **receipts:** format narrow thermal and PDF receipts ([726bc4c](https://github.com/Lycan-Xx/trova-ims/commit/726bc4cce078d64730ff677c58f39995de039593))
+
 ## [1.2.5](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.4...v1.2.5) (2026-08-28)
 
 
