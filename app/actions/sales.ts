@@ -66,6 +66,18 @@ export interface SalesSummary {
   totalUnitsSold: number
 }
 
+export interface SalesCsvRow {
+  createdAt: string
+  receiptNumber: string
+  productName: string
+  qtySold: number
+  unitPrice: string
+  lineTotal: string
+  paymentMethod: string
+  saleTotal: string
+  cashierName: string | null
+}
+
 // ── createSale ─────────────────────────────────────────────────────────────────
 
 export async function createSale(
@@ -557,6 +569,90 @@ export async function getSaleById(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch sale.'
+    return { success: false, error: message }
+  }
+}
+
+export async function getRetainedSalesCsvRows(filters?: {
+  dateFrom?: string
+  dateTo?: string
+  cashierId?: string
+  paymentMethod?: string
+}): Promise<{ success: true; data: SalesCsvRow[] } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  if (user.role !== 'owner') {
+    return { success: false, error: 'Only the store owner can export sales records.' }
+  }
+
+  try {
+    const conditions: string[] = [
+      's.store_id = $1',
+      "s.created_at >= NOW() - INTERVAL '720 hours'",
+    ]
+    const params: unknown[] = [user.store_id]
+    let idx = 2
+
+    if (filters?.cashierId) {
+      conditions.push(`s.cashier_id = $${idx++}`)
+      params.push(filters.cashierId)
+    }
+
+    if (filters?.paymentMethod) {
+      conditions.push(`s.payment_method = $${idx++}`)
+      params.push(filters.paymentMethod)
+    }
+
+    if (filters?.dateFrom) {
+      conditions.push(`s.created_at >= $${idx}::date`)
+      params.push(filters.dateFrom)
+      idx++
+    }
+
+    if (filters?.dateTo) {
+      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
+      params.push(filters.dateTo)
+      idx++
+    }
+
+    const result = await query(
+      `SELECT
+         s.created_at,
+         s.receipt_number,
+         p.name AS product_name,
+         si.qty_sold,
+         si.unit_price,
+         si.line_total,
+         s.payment_method,
+         s.total_amount AS sale_total,
+         u.name AS cashier_name
+       FROM sales s
+       JOIN sale_items si ON si.sale_id = s.id
+       JOIN products p ON p.id = si.product_id
+       LEFT JOIN users u ON u.id = s.cashier_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY s.created_at DESC, s.receipt_number ASC, p.name ASC`,
+      params,
+    )
+
+    return {
+      success: true,
+      data: result.rows.map((row) => ({
+        createdAt: row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : String(row.created_at),
+        receiptNumber: row.receipt_number as string,
+        productName: row.product_name as string,
+        qtySold: row.qty_sold as number,
+        unitPrice: row.unit_price as string,
+        lineTotal: row.line_total as string,
+        paymentMethod: row.payment_method as string,
+        saleTotal: row.sale_total as string,
+        cashierName: row.cashier_name as string | null,
+      })),
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to export sales records.'
     return { success: false, error: message }
   }
 }

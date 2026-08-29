@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
+import { SalesCsvButton } from '@/components/sales/sales-csv-button'
 import type { SaleRow } from '@/app/actions/sales'
 
 interface SalesListProps {
@@ -251,6 +252,14 @@ export function SalesList({
         )}
 
         {/* New Sale CTA */}
+        {isOwner && (
+          <SalesCsvButton
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            cashierId={searchParams.get('cashierId') ?? undefined}
+            paymentMethod={searchParams.get('paymentMethod') ?? undefined}
+          />
+        )}
         <Link href="/sales/new" className="ml-auto">
           <Button
             className="h-9 rounded-lg px-4 text-sm font-medium text-white"
