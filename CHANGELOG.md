@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.4.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.3.1...v1.4.0) (2026-08-29)
+
+
+### Features
+
+* **customer-display:** add polished checkout states ([fa57b19](https://github.com/Lycan-Xx/trova-ims/commit/fa57b1902566355131e3b319f62fd85048af30dd))
+
+
+### Bug Fixes
+
+* **desktop:** hide startup helper consoles and persist paper width ([c30d24c](https://github.com/Lycan-Xx/trova-ims/commit/c30d24c3edc0956b5749f14f6af265678809ffaa))
+* **pos:** stabilize thermal receipts and customer display ([b7ab540](https://github.com/Lycan-Xx/trova-ims/commit/b7ab5403d01816b6d1dd28ae2f6fc5b632f294e1))
+* **receipts:** import shared currency formatter ([da6bdd7](https://github.com/Lycan-Xx/trova-ims/commit/da6bdd7da94c9b9fdde943ab2dd702149ff0d012))
+
 ## [1.3.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.3.0...v1.3.1) (2026-08-29)
 
 
