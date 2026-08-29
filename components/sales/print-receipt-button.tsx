@@ -13,6 +13,7 @@ import {
   requestPrinterStatusRefresh,
 } from '@/lib/printer-status-events'
 import { buildEscPosReceipt } from '@/lib/receipt/escpos-renderer'
+import { getCurrencySymbol } from '@/lib/currency'
 import { useCurrency } from '@/lib/currency-context'
 
 type PrintJobRequest = {
