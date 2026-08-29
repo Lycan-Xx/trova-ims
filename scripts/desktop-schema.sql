@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS products (
   unit            unit_type NOT NULL DEFAULT 'piece',
   selling_price   NUMERIC(12, 2) NOT NULL DEFAULT 0,
   reorder_level   INTEGER NOT NULL DEFAULT 10,
+  track_inventory BOOLEAN NOT NULL DEFAULT TRUE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -157,6 +158,7 @@ CREATE TABLE IF NOT EXISTS invitations (
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'NGN';
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS track_inventory BOOLEAN NOT NULL DEFAULT TRUE;
 
 ALTER TABLE batches ADD COLUMN IF NOT EXISTS pack_size INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE batches ADD COLUMN IF NOT EXISTS supplier_lot_number TEXT;
@@ -175,6 +177,7 @@ ALTER TABLE batches ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DE
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashier_id UUID;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12, 2);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS change_given NUMERIC(12, 2);
+ALTER TABLE sale_items ALTER COLUMN batch_id DROP NOT NULL;
 
 -- Align databases created by early desktop builds with the canonical sales
 -- contract used by app/actions/sales.ts. The conditional renames preserve

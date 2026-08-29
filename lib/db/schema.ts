@@ -57,6 +57,7 @@ export interface Product {
   unit: UnitType
   selling_price: string   // DECIMAL comes back as string from pg
   reorder_level: number
+  track_inventory: boolean
   is_active: boolean
   created_at: string
 }
@@ -99,7 +100,7 @@ export interface SaleItem {
   id: string
   sale_id: string
   product_id: string
-  batch_id: string
+  batch_id: string | null
   qty_sold: number
   unit_price: string
   line_total: string

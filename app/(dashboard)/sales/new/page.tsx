@@ -30,6 +30,19 @@ function fmt(n: number) {
   }).format(n)
 }
 
+function tracksInventory(product: ProductWithStock): boolean {
+  return product.track_inventory !== false
+}
+
+function productIsOutOfStock(product: ProductWithStock): boolean {
+  return tracksInventory(product) && product.current_stock === 0
+}
+
+function getQtyError(product: ProductWithStock, qty: number): string | null {
+  if (!tracksInventory(product)) return null
+  return qty > product.current_stock ? `Max ${product.current_stock} available` : null
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function NewSalePage() {
@@ -154,12 +167,12 @@ export default function NewSalePage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────────
 
   function addToCart(product: ProductWithStock) {
-    if (product.current_stock === 0) return
+    if (productIsOutOfStock(product)) return
     setCart((prev) => {
       const existing = prev.find((e) => e.product.id === product.id)
       if (existing) {
         const newQty = existing.qty + 1
-        const qtyError = newQty > product.current_stock ? `Max ${product.current_stock} available` : null
+        const qtyError = getQtyError(product, newQty)
         return prev.map((e) =>
           e.product.id === product.id ? { ...e, qty: newQty, qtyError } : e,
         )
@@ -178,9 +191,7 @@ export default function NewSalePage() {
       prev.map((e) => {
         if (e.product.id !== productId) return e
         if (isNaN(parsed) || parsed < 1) return { ...e, qty: 1, qtyError: null }
-        const qtyError = parsed > e.product.current_stock
-          ? `Max ${e.product.current_stock} available`
-          : null
+        const qtyError = getQtyError(e.product, parsed)
         return { ...e, qty: parsed, qtyError }
       }),
     )
@@ -316,7 +327,7 @@ export default function NewSalePage() {
                     // whatever's currently in the dropdown.
                     const barcodeResult = await getProductByBarcode(raw)
                     if (barcodeResult.success && barcodeResult.data) {
-                      if (barcodeResult.data.current_stock > 0) {
+                      if (!productIsOutOfStock(barcodeResult.data)) {
                         addToCart(barcodeResult.data)
                       } else {
                         toast.error(`${barcodeResult.data.name} is out of stock.`)
@@ -341,7 +352,7 @@ export default function NewSalePage() {
                     }
 
                     if (typedResults.length > 0) {
-                      const first = typedResults.find((p) => p.current_stock > 0)
+                      const first = typedResults.find((p) => !productIsOutOfStock(p))
                       if (first) {
                         addToCart(first)
                         return
@@ -382,7 +393,7 @@ export default function NewSalePage() {
                 }}
               >
                 {searchResults.map((product) => {
-                  const outOfStock = product.current_stock === 0
+                  const outOfStock = productIsOutOfStock(product)
                   return (
                     <button
                       key={product.id}
@@ -415,6 +426,10 @@ export default function NewSalePage() {
                         </span>
                         {outOfStock ? (
                           <span className="text-xs" style={{ color: 'var(--danger)' }}>Out of stock</span>
+                        ) : !tracksInventory(product) ? (
+                          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            Stock not tracked
+                          </span>
                         ) : (
                           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                             {product.current_stock} {product.unit} avail.
@@ -530,7 +545,7 @@ export default function NewSalePage() {
                         <input
                           type="number"
                           min={1}
-                          max={entry.product.current_stock}
+                          max={tracksInventory(entry.product) ? entry.product.current_stock : undefined}
                           value={entry.qty}
                           onChange={(e) => updateQty(entry.product.id, e.target.value)}
                           className="w-16 h-8 text-center text-sm rounded-md outline-none"

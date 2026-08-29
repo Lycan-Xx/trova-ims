@@ -13,8 +13,8 @@ export interface CartItem {
   qtySold: number
 }
 
-interface BatchDeduction {
-  batchId: string
+interface SaleDeduction {
+  batchId: string | null
   productId: string
   productName: string
   qtyDeducted: number
@@ -24,7 +24,7 @@ interface BatchDeduction {
 export interface SaleItemResult {
   productId: string
   productName: string
-  batchId: string
+  batchId: string | null
   batchRef: string | null
   qtySold: number
   unitPrice: string
@@ -79,14 +79,14 @@ export async function createSale(
 
       try {
         // ── STEP 1: FEFO Batch Resolution ────────────────────────────────────
-        const allDeductions: BatchDeduction[] = []
+        const allDeductions: SaleDeduction[] = []
 
         for (const item of cartItems) {
           if (item.qtySold <= 0) continue
 
           // Fetch product for name + default selling price
           const productRes = await client.query(
-            `SELECT id, name, selling_price FROM products
+            `SELECT id, name, selling_price, track_inventory FROM products
              WHERE id = $1 AND store_id = $2 AND is_active = true
              LIMIT 1`,
             [item.productId, user.store_id],
@@ -95,6 +95,17 @@ export async function createSale(
             throw new Error(`Product not found: ${item.productId}`)
           }
           const product = productRes.rows[0]
+
+          if (!product.track_inventory) {
+            allDeductions.push({
+              batchId: null,
+              productId: item.productId,
+              productName: product.name,
+              qtyDeducted: item.qtySold,
+              unitPrice: parseFloat(product.selling_price),
+            })
+            continue
+          }
 
           // Fetch all batches with remaining stock, FEFO order.
           // FOR UPDATE locks these rows for the duration of the transaction so
@@ -141,6 +152,10 @@ export async function createSale(
         }
 
         // ── STEP 2: Create Sale Record ────────────────────────────────────────
+        if (allDeductions.length === 0) {
+          throw new Error('Cart has no valid items.')
+        }
+
         const totalAmount = allDeductions.reduce(
           (sum, d) => sum + d.qtyDeducted * d.unitPrice,
           0,
@@ -186,9 +201,9 @@ export async function createSale(
         const saleItemResults: SaleItemResult[] = []
 
         // Merge deductions for same batch (shouldn't happen but defensive)
-        const mergedDeductions = new Map<string, BatchDeduction>()
+        const mergedDeductions = new Map<string, SaleDeduction>()
         for (const d of allDeductions) {
-          const key = `${d.batchId}`
+          const key = d.batchId ?? `untracked:${d.productId}:${d.unitPrice.toFixed(2)}`
           const existing = mergedDeductions.get(key)
           if (existing) {
             existing.qtyDeducted += d.qtyDeducted
@@ -201,11 +216,14 @@ export async function createSale(
           const lineTotal = d.qtyDeducted * d.unitPrice
 
           // Fetch batch ref for the receipt
-          const batchRefRes = await client.query(
-            'SELECT batch_ref FROM batches WHERE id = $1 LIMIT 1',
-            [d.batchId],
-          )
-          const batchRef = batchRefRes.rows[0]?.batch_ref ?? null
+          let batchRef: string | null = null
+          if (d.batchId) {
+            const batchRefRes = await client.query(
+              'SELECT batch_ref FROM batches WHERE id = $1 LIMIT 1',
+              [d.batchId],
+            )
+            batchRef = batchRefRes.rows[0]?.batch_ref ?? null
+          }
 
           // Insert sale_item
           await client.query(
@@ -224,12 +242,14 @@ export async function createSale(
           )
 
           // Decrement batch qty_remaining
-          await client.query(
-            `UPDATE batches
-             SET qty_remaining = qty_remaining - $1
-             WHERE id = $2 AND store_id = $3`,
-            [d.qtyDeducted, d.batchId, user.store_id],
-          )
+          if (d.batchId) {
+            await client.query(
+              `UPDATE batches
+               SET qty_remaining = qty_remaining - $1
+               WHERE id = $2 AND store_id = $3`,
+              [d.qtyDeducted, d.batchId, user.store_id],
+            )
+          }
 
           saleItemResults.push({
             productId: d.productId,
@@ -485,7 +505,7 @@ export async function getSaleById(
          si.line_total
        FROM sale_items si
        JOIN products p ON p.id = si.product_id
-       JOIN batches b ON b.id = si.batch_id
+       LEFT JOIN batches b ON b.id = si.batch_id
        WHERE si.sale_id = $1
        ORDER BY p.name ASC`,
       [saleId],
