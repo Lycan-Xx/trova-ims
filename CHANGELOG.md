@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.5.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.4.0...v1.5.0) (2026-08-29)
+
+
+### Features
+
+* automate sales records and external links ([58455af](https://github.com/Lycan-Xx/trova-ims/commit/58455afe13cc00be78725255624ec95b131bae7e))
+
 ## [1.4.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.3.1...v1.4.0) (2026-08-29)
 
 
