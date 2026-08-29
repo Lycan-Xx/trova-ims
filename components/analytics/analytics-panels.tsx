@@ -10,7 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import Papa from 'papaparse'
 import { StatCard } from '@/components/ui/stat-card'
 import { Badge } from '@/components/ui/badge'
 import { useCurrency } from '@/lib/currency-context'
@@ -41,17 +40,6 @@ function fmtFullDate(d: string): string {
 
 function daysUntil(d: string): number {
   return Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000)
-}
-
-function triggerCsvDownload(data: object[], filename: string) {
-  const csv = Papa.unparse(data)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 // ── Custom tooltip for bar chart ──────────────────────────────────────────────
@@ -108,30 +96,6 @@ function Panel({ children }: { children: React.ReactNode }) {
     >
       {children}
     </section>
-  )
-}
-
-function ExportButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className="h-7 px-3 rounded-lg text-xs font-medium transition-colors"
-      style={{
-        background: 'var(--bg-input)',
-        border: '1px solid var(--border)',
-        color: 'var(--text-secondary)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = 'var(--text-primary)'
-        e.currentTarget.style.borderColor = 'var(--accent-primary)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = 'var(--text-secondary)'
-        e.currentTarget.style.borderColor = 'var(--border)'
-      }}
-    >
-      {label}
-    </button>
   )
 }
 
@@ -202,50 +166,6 @@ export function AnalyticsPanels({
   const { currency } = useCurrency()
   const currencySymbol = getCurrencySymbol(currency)
   const fmtCurrency = makeFmtCurrency(currencySymbol)
-  const rangeLabel = `${dateFrom}_${dateTo}`
-
-  function exportProducts() {
-    if (!sales) return
-    triggerCsvDownload(
-      sales.topProducts.map((p, i) => ({
-        Rank: i + 1,
-        Product: p.name,
-        SKU: p.sku,
-        'Units Sold': p.unitsSold,
-        [`Revenue (${currency})`]: p.revenue.toFixed(2),
-        'Avg Margin (%)': p.avgMargin.toFixed(2),
-      })),
-      `product-report_${rangeLabel}.csv`,
-    )
-  }
-
-  function exportVendors() {
-    triggerCsvDownload(
-      vendors.map((v) => ({
-        Vendor: v.vendorName,
-        Type: v.vendorType,
-        Batches: v.batchCount,
-        'Units Received': v.totalUnitsReceived,
-        [`Total Cost (${currency})`]: v.totalPurchaseCost.toFixed(2),
-        'Outstanding Units': v.outstandingQty,
-      })),
-      `vendor-report_${rangeLabel}.csv`,
-    )
-  }
-
-  function exportExpiry() {
-    triggerCsvDownload(
-      expiryRisk.map((e) => ({
-        Product: e.productName,
-        'Batch Ref': e.batchRef ?? '',
-        Vendor: e.vendorName ?? '',
-        'Qty Remaining': e.qtyRemaining,
-        'Expiry Date': e.expiryDate,
-        [`Est. Value at Risk (${currency})`]: e.estValueAtRisk.toFixed(2),
-      })),
-      `expiry-risk-report_${rangeLabel}.csv`,
-    )
-  }
 
   if (isLoading) {
     return (
@@ -342,7 +262,6 @@ export function AnalyticsPanels({
         <PanelHeader
           title="Top Products"
           subtitle={sales ? `Top ${sales.topProducts.length} by units sold` : undefined}
-          action={<ExportButton onClick={exportProducts} label="Export Product Report (CSV)" />}
         />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -395,7 +314,6 @@ export function AnalyticsPanels({
         <PanelHeader
           title="Vendor Purchase Summary"
           subtitle={`${vendors.length} active vendor${vendors.length !== 1 ? 's' : ''}`}
-          action={<ExportButton onClick={exportVendors} label="Export Vendor Report (CSV)" />}
         />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -445,7 +363,6 @@ export function AnalyticsPanels({
         <PanelHeader
           title="Expiry Risk"
           subtitle={`${expiryRisk.length} batch${expiryRisk.length !== 1 ? 'es' : ''} with upcoming expiry`}
-          action={<ExportButton onClick={exportExpiry} label="Export Expiry Report (CSV)" />}
         />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
