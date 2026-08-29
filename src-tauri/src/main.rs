@@ -38,6 +38,17 @@ const SERVER_PORT: u16 = 47821;
 const STARTUP_ATTEMPTS: u16 = 200;
 const STARTUP_POLL_MS: u64 = 150;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn hide_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
 #[tauri::command]
 fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
     let window = app
@@ -63,10 +74,10 @@ struct ServerProcess(Mutex<Option<Child>>);
 #[cfg(windows)]
 fn terminate_previous_instances() {
     let current_pid = std::process::id();
-    let output = match Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq trova-ims.exe", "/FO", "CSV", "/NH"])
-        .output()
-    {
+    let mut command = Command::new("tasklist");
+    command.args(["/FI", "IMAGENAME eq trova-ims.exe", "/FO", "CSV", "/NH"]);
+    hide_console(&mut command);
+    let output = match command.output() {
         Ok(output) => output,
         Err(err) => {
             eprintln!("[trova-ims] Could not inspect previous instances: {err}");
@@ -88,9 +99,10 @@ fn terminate_previous_instances() {
         }
 
         eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
-        let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .output();
+        let mut command = Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        hide_console(&mut command);
+        let _ = command.output();
     }
 
     // Give Windows a moment to release the old WebView and local server port
@@ -130,7 +142,10 @@ fn terminate_previous_instances() {
 /// to Trova's private port avoids touching unrelated Node applications.
 #[cfg(windows)]
 fn terminate_orphaned_server() -> bool {
-    let output = match Command::new("netstat").args(["-ano", "-p", "tcp"]).output() {
+    let mut command = Command::new("netstat");
+    command.args(["-ano", "-p", "tcp"]);
+    hide_console(&mut command);
+    let output = match command.output() {
         Ok(output) => output,
         Err(err) => {
             eprintln!("[trova-ims] Could not inspect the desktop server port: {err}");
@@ -154,9 +169,10 @@ fn terminate_orphaned_server() -> bool {
             continue;
         };
         eprintln!("[trova-ims] Replacing orphaned local server (pid {pid})");
-        let result = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .output();
+        let mut command = Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        hide_console(&mut command);
+        let result = command.output();
         if !matches!(result, Ok(output) if output.status.success()) {
             cleared = false;
         }
@@ -213,8 +229,10 @@ fn find_node(resource_dir: &std::path::Path) -> String {
     #[cfg(not(target_os = "windows"))]
     let (search_bin, search_arg) = ("which", "node");
 
-    Command::new(search_bin)
-        .arg(search_arg)
+    let mut command = Command::new(search_bin);
+    command.arg(search_arg);
+    hide_console(&mut command);
+    command
         .output()
         .ok()
         .and_then(|o| {
@@ -369,12 +387,7 @@ fn spawn_local_server(
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_clone));
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    hide_console(&mut cmd);
 
     cmd.spawn()
 }

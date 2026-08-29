@@ -130,6 +130,7 @@ export function PrinterSetup() {
 
   function handlePaperWidth(w: 58 | 80) {
     setPaperWidth(w)
+    setSettings((current) => current ? { ...current, paperWidth: w } : current)
     savePrinterSettings({ paperWidth: w })
   }
 
