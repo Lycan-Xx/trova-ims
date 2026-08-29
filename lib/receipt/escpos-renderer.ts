@@ -74,6 +74,9 @@ type RasterCommand =
   | { kind: 'rule'; lineHeight: number }
 
 const RASTER_WIDTH: Record<PaperWidth, number> = { 80: 576, 58: 384 }
+// Add about 4 mm of image padding before the cutter. Some 58 mm drivers begin
+// their cut/advance slightly early, which can otherwise clip the footer.
+const RASTER_BOTTOM_PADDING = 32
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -288,7 +291,10 @@ export function buildRasterEscPosReceipt(
   pushWrappedText('Thank you for your purchase!', 'center')
   pushWrappedText('Powered by Trova IMS', 'center')
 
-  const height = margin * 2 + commands.reduce((sum, command) => sum + command.lineHeight, 0)
+  const height =
+    margin * 2 +
+    commands.reduce((sum, command) => sum + command.lineHeight, 0) +
+    RASTER_BOTTOM_PADDING
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height

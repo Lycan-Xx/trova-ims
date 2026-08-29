@@ -71,6 +71,7 @@ export default function NewSalePage() {
   // Cart state
   const [cart, setCart] = React.useState<CartEntry[]>([])
   const customerDisplayPayloadRef = React.useRef<CustomerDisplayCart | null>(null)
+  const customerSaleCompletedRef = React.useRef(false)
 
   // Effective per-unit prices, keyed by product id. This is the price that
   // will actually be charged (the next FEFO batch's override, if any) — it
@@ -235,6 +236,7 @@ export default function NewSalePage() {
         total: entry.qty * getPrice(entry.product),
       })),
       total: cartTotal,
+      status: cart.length > 0 ? 'cart' : 'idle',
     }
     customerDisplayPayloadRef.current = payload
     if (payload.items.length > 0) {
@@ -247,6 +249,7 @@ export default function NewSalePage() {
 
   React.useEffect(() => () => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    if (customerSaleCompletedRef.current) return
     const payload = customerDisplayPayloadRef.current
     clearCustomerDisplaySnapshot()
     void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, {
@@ -254,6 +257,7 @@ export default function NewSalePage() {
       currencySymbol: payload?.currencySymbol ?? getCurrencySymbol('NGN'),
       items: [],
       total: 0,
+      status: 'idle',
     }))
   }, [])
 
@@ -279,6 +283,28 @@ export default function NewSalePage() {
         amountPaidNum,
       )
       if (res.success) {
+        if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          const completionPayload: CustomerDisplayCart = {
+            storeName,
+            currencySymbol: getCurrencySymbol(currency),
+            items: cart.map((entry) => ({
+              name: entry.product.name,
+              quantity: entry.qty,
+              unitPrice: getPrice(entry.product),
+              total: entry.qty * getPrice(entry.product),
+            })),
+            total: cartTotal,
+            status: 'complete',
+            receiptNumber: res.data.receiptNumber,
+            paymentMethod,
+            completedAt: Date.now(),
+          }
+          customerSaleCompletedRef.current = true
+          customerDisplayPayloadRef.current = completionPayload
+          saveCustomerDisplaySnapshot(completionPayload)
+          const { emit } = await import('@tauri-apps/api/event')
+          await emit(CUSTOMER_DISPLAY_EVENT, completionPayload)
+        }
         toast.success(`Sale recorded — ${res.data.receiptNumber}`)
         router.push(`/sales/${res.data.saleId}`)
       } else {

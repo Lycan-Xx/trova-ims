@@ -1,6 +1,7 @@
 export const CUSTOMER_DISPLAY_EVENT = 'trova:customer-display-cart'
 export const CUSTOMER_DISPLAY_STORAGE_KEY = 'trova_customer_display_settings'
 export const CUSTOMER_DISPLAY_SNAPSHOT_KEY = 'trova_customer_display_snapshot'
+export const CUSTOMER_DISPLAY_COMPLETE_DURATION_MS = 12000
 
 export interface CustomerDisplayItem {
   name: string
@@ -9,11 +10,17 @@ export interface CustomerDisplayItem {
   total: number
 }
 
+export type CustomerDisplayStatus = 'idle' | 'cart' | 'complete'
+
 export interface CustomerDisplayCart {
   storeName: string
   currencySymbol: string
   items: CustomerDisplayItem[]
   total: number
+  status: CustomerDisplayStatus
+  receiptNumber?: string
+  paymentMethod?: string
+  completedAt?: number
 }
 
 export interface CustomerDisplaySettings {
@@ -61,7 +68,21 @@ export function getCustomerDisplaySnapshot(): CustomerDisplayCart | null {
       typeof parsed.currencySymbol !== 'string' || typeof parsed.total !== 'number') {
       return null
     }
-    return parsed as CustomerDisplayCart
+    const status: CustomerDisplayStatus =
+      parsed.status === 'complete' || parsed.status === 'cart' || parsed.status === 'idle'
+        ? parsed.status
+        : parsed.items.length > 0
+          ? 'cart'
+          : 'idle'
+    if (
+      status === 'complete' &&
+      (typeof parsed.completedAt !== 'number' ||
+        Date.now() - parsed.completedAt >= CUSTOMER_DISPLAY_COMPLETE_DURATION_MS)
+    ) {
+      window.localStorage.removeItem(CUSTOMER_DISPLAY_SNAPSHOT_KEY)
+      return null
+    }
+    return { ...parsed, status } as CustomerDisplayCart
   } catch {
     return null
   }
