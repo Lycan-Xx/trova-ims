@@ -1,7 +1,7 @@
 export const CUSTOMER_DISPLAY_EVENT = 'trova:customer-display-cart'
 export const CUSTOMER_DISPLAY_STORAGE_KEY = 'trova_customer_display_settings'
 export const CUSTOMER_DISPLAY_SNAPSHOT_KEY = 'trova_customer_display_snapshot'
-export const CUSTOMER_DISPLAY_COMPLETE_DURATION_MS = 12000
+export const CUSTOMER_DISPLAY_COMPLETE_DURATION_MS = 20000
 
 export interface CustomerDisplayItem {
   name: string
@@ -21,6 +21,7 @@ export interface CustomerDisplayCart {
   receiptNumber?: string
   paymentMethod?: string
   completedAt?: number
+  saleStartedAt?: number
 }
 
 export interface CustomerDisplaySettings {

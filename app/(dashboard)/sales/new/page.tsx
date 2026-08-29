@@ -72,6 +72,7 @@ export default function NewSalePage() {
   const [cart, setCart] = React.useState<CartEntry[]>([])
   const customerDisplayPayloadRef = React.useRef<CustomerDisplayCart | null>(null)
   const customerSaleCompletedRef = React.useRef(false)
+  const customerSaleStartedAtRef = React.useRef(Date.now())
 
   // Effective per-unit prices, keyed by product id. This is the price that
   // will actually be charged (the next FEFO batch's override, if any) — it
@@ -226,6 +227,9 @@ export default function NewSalePage() {
 
   React.useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    // A successful sale owns the customer display briefly. Do not let a
+    // late price/cart update overwrite the payment-complete screen.
+    if (customerSaleCompletedRef.current) return
     const payload: CustomerDisplayCart = {
       storeName,
       currencySymbol: getCurrencySymbol(currency),
@@ -237,6 +241,7 @@ export default function NewSalePage() {
       })),
       total: cartTotal,
       status: cart.length > 0 ? 'cart' : 'idle',
+      saleStartedAt: customerSaleStartedAtRef.current,
     }
     customerDisplayPayloadRef.current = payload
     if (payload.items.length > 0) {
@@ -244,7 +249,11 @@ export default function NewSalePage() {
     } else {
       clearCustomerDisplaySnapshot()
     }
-    void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, payload))
+    void import('@tauri-apps/api/event').then(({ emit }) => {
+      if (!customerSaleCompletedRef.current) {
+        return emit(CUSTOMER_DISPLAY_EVENT, payload)
+      }
+    })
   }, [cart, cartTotal, currency, effectivePrices, storeName])
 
   React.useEffect(() => () => {
@@ -298,6 +307,7 @@ export default function NewSalePage() {
             receiptNumber: res.data.receiptNumber,
             paymentMethod,
             completedAt: Date.now(),
+            saleStartedAt: customerSaleStartedAtRef.current,
           }
           customerSaleCompletedRef.current = true
           customerDisplayPayloadRef.current = completionPayload

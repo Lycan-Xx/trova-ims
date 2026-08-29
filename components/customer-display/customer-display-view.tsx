@@ -52,14 +52,29 @@ function TrovaBrand() {
 
 export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: string; currencySymbol: string }) {
   const [cart, setCart] = React.useState<CustomerDisplayCart>({ ...EMPTY_CART, storeName, currencySymbol })
+  const completionActiveRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     let unlisten: (() => void) | undefined
-    void listen<CustomerDisplayCart>(CUSTOMER_DISPLAY_EVENT, (event) => setCart(event.payload))
+    const applyCustomerDisplayUpdate = (nextCart: CustomerDisplayCart) => {
+      if (nextCart.status === 'complete') {
+        completionActiveRef.current = nextCart.completedAt ?? Date.now()
+      } else if (completionActiveRef.current !== null) {
+        // A fresh checkout can replace the thank-you screen immediately;
+        // delayed events from the completed checkout cannot.
+        if (typeof nextCart.saleStartedAt !== 'number' || nextCart.saleStartedAt <= completionActiveRef.current) {
+          return
+        }
+        completionActiveRef.current = null
+      }
+      setCart(nextCart)
+    }
+
+    void listen<CustomerDisplayCart>(CUSTOMER_DISPLAY_EVENT, (event) => applyCustomerDisplayUpdate(event.payload))
       .then((cleanup) => {
         unlisten = cleanup
         const snapshot = getCustomerDisplaySnapshot()
-        if (snapshot) setCart(snapshot)
+        if (snapshot) applyCustomerDisplayUpdate(snapshot)
       })
     return () => unlisten?.()
   }, [])
@@ -68,6 +83,7 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
     if (cart.status !== 'complete') return
     const elapsed = cart.completedAt ? Date.now() - cart.completedAt : 0
     const reset = window.setTimeout(() => {
+      completionActiveRef.current = null
       clearCustomerDisplaySnapshot()
       setCart({ ...EMPTY_CART, storeName: cart.storeName, currencySymbol: cart.currencySymbol })
     }, Math.max(0, CUSTOMER_DISPLAY_COMPLETE_DURATION_MS - elapsed))
