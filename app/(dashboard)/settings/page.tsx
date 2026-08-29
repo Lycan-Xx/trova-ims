@@ -5,6 +5,7 @@ import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
 import { PrinterSetup } from '@/components/settings/printer-setup'
+import packageJson from '@/package.json'
 
 export const metadata = { title: 'Settings — StockSmart' }
 
@@ -103,10 +104,64 @@ export default async function SettingsPage() {
         </div>
       )}
 
+      <section
+        className="rounded-xl p-6"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+        }}
+      >
+        <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+          About & Support
+        </h2>
+        <div className="grid gap-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <div>
+            <p className="font-medium" style={{ color: 'var(--text-primary)' }}>Trova IMS</p>
+            <p>Version {process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version}</p>
+          </div>
+          <p>
+            Built by <span style={{ color: 'var(--text-primary)' }}>LycanForge</span>
+          </p>
+          <div>
+            <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Support</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <a href="mailto:client@lycanforge.com.ng" className="hover:text-white transition-colors">
+                client@lycanforge.com.ng
+              </a>
+              <a
+                href="https://wa.me/2347058392920"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors"
+              >
+                +234 705 839 2920 on WhatsApp
+              </a>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Legal</p>
+            <p className="leading-relaxed">
+              Copyright LycanForge. All rights reserved. This software is provided for use by the
+              authorized recipient pending the formal Trova IMS End User License Agreement (EULA).
+              Unauthorized redistribution, resale, copying, or distribution without written
+              permission from LycanForge is prohibited.
+            </p>
+          </div>
+          <a
+            href="https://trova.lycanforge.com.ng/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-fit hover:text-white transition-colors"
+          >
+            Privacy Policy
+          </a>
+        </div>
+      </section>
+
       {/* Legal + version footer */}
       <div className="flex items-center justify-center gap-4 py-8 text-xs" style={{ color: 'var(--text-muted)' }}>
         <a
-          href="https://lycanforge.com.ng/trova/privacy"
+          href="https://trova.lycanforge.com.ng/privacy"
           target="_blank"
           rel="noopener noreferrer"
           className="hover:text-white transition-colors"
@@ -116,7 +171,7 @@ export default async function SettingsPage() {
         <span>•</span>
         <span>© {new Date().getFullYear()} Trova</span>
         <span>•</span>
-        <span>v{process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.4'}</span>
+        <span>v{process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version}</span>
       </div>
     </main>
   )

@@ -17,6 +17,7 @@ function getInitials(name: string | null | undefined): string {
 }
 
 const ALERT_COUNT = 0
+const ENABLE_ACCOUNT_FEATURES = false
 
 const PRINTER_STATE_LABEL: Record<ReturnType<typeof usePrinterStatus>['state'], string> = {
   not_configured: 'No printer configured',
@@ -263,50 +264,54 @@ export function Topbar() {
           )}
         </button>
 
-        {/* Sign out */}
-        <button
-          type="button"
-          onClick={handleSignOut}
-          aria-label="Sign out"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-          }}
-        >
-          <LogOut size={16} strokeWidth={1.75} />
-        </button>
+        {ENABLE_ACCOUNT_FEATURES && (
+          <>
+            {/* Sign out */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <LogOut size={16} strokeWidth={1.75} />
+            </button>
 
-        {/* User avatar */}
-        <div
-          aria-label={session?.user?.name ?? 'User'}
-          role="img"
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: '50%',
-            backgroundColor: 'var(--accent-primary-muted)',
-            border: '1.5px solid var(--accent-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--accent-primary)',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.02em',
-            userSelect: 'none',
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
+            {/* User avatar */}
+            <div
+              aria-label={session?.user?.name ?? 'User'}
+              role="img"
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: '50%',
+                backgroundColor: 'var(--accent-primary-muted)',
+                border: '1.5px solid var(--accent-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--accent-primary)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                userSelect: 'none',
+                flexShrink: 0,
+              }}
+            >
+              {initials}
+            </div>
+          </>
+        )}
       </div>
     </header>
   )

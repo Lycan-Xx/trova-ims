@@ -1,6 +1,7 @@
 import { Sidebar } from '@/components/layout/sidebar'
 import { MobileNav } from '@/components/layout/mobile-nav'
 import { Topbar } from '@/components/layout/topbar'
+import { DevToolsShortcut } from '@/components/desktop/devtools-shortcut'
 import { CurrencyProvider } from '@/components/providers/currency-provider'
 import { getCurrentUser } from '@/lib/auth'
 import { getStoreSettings } from '@/app/actions/settings'
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
   return (
     <CurrencyProvider store={store}>
       <>
+        <DevToolsShortcut />
         {/* Desktop layout: fixed sidebar + content column */}
         <div
           className="hidden md:flex"
