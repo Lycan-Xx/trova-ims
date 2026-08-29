@@ -13,8 +13,8 @@ export interface CartItem {
   qtySold: number
 }
 
-interface BatchDeduction {
-  batchId: string
+interface SaleDeduction {
+  batchId: string | null
   productId: string
   productName: string
   qtyDeducted: number
@@ -24,7 +24,7 @@ interface BatchDeduction {
 export interface SaleItemResult {
   productId: string
   productName: string
-  batchId: string
+  batchId: string | null
   batchRef: string | null
   qtySold: number
   unitPrice: string
@@ -59,6 +59,25 @@ export interface SaleDetail extends SaleRow {
   items: SaleItemResult[]
 }
 
+export interface SalesSummary {
+  totalRevenue: number
+  transactionCount: number
+  avgTransactionValue: number
+  totalUnitsSold: number
+}
+
+export interface SalesCsvRow {
+  createdAt: string
+  receiptNumber: string
+  productName: string
+  qtySold: number
+  unitPrice: string
+  lineTotal: string
+  paymentMethod: string
+  saleTotal: string
+  cashierName: string | null
+}
+
 // ── createSale ─────────────────────────────────────────────────────────────────
 
 export async function createSale(
@@ -79,14 +98,14 @@ export async function createSale(
 
       try {
         // ── STEP 1: FEFO Batch Resolution ────────────────────────────────────
-        const allDeductions: BatchDeduction[] = []
+        const allDeductions: SaleDeduction[] = []
 
         for (const item of cartItems) {
           if (item.qtySold <= 0) continue
 
           // Fetch product for name + default selling price
           const productRes = await client.query(
-            `SELECT id, name, selling_price FROM products
+            `SELECT id, name, selling_price, track_inventory FROM products
              WHERE id = $1 AND store_id = $2 AND is_active = true
              LIMIT 1`,
             [item.productId, user.store_id],
@@ -95,6 +114,17 @@ export async function createSale(
             throw new Error(`Product not found: ${item.productId}`)
           }
           const product = productRes.rows[0]
+
+          if (!product.track_inventory) {
+            allDeductions.push({
+              batchId: null,
+              productId: item.productId,
+              productName: product.name,
+              qtyDeducted: item.qtySold,
+              unitPrice: parseFloat(product.selling_price),
+            })
+            continue
+          }
 
           // Fetch all batches with remaining stock, FEFO order.
           // FOR UPDATE locks these rows for the duration of the transaction so
@@ -141,6 +171,10 @@ export async function createSale(
         }
 
         // ── STEP 2: Create Sale Record ────────────────────────────────────────
+        if (allDeductions.length === 0) {
+          throw new Error('Cart has no valid items.')
+        }
+
         const totalAmount = allDeductions.reduce(
           (sum, d) => sum + d.qtyDeducted * d.unitPrice,
           0,
@@ -186,9 +220,9 @@ export async function createSale(
         const saleItemResults: SaleItemResult[] = []
 
         // Merge deductions for same batch (shouldn't happen but defensive)
-        const mergedDeductions = new Map<string, BatchDeduction>()
+        const mergedDeductions = new Map<string, SaleDeduction>()
         for (const d of allDeductions) {
-          const key = `${d.batchId}`
+          const key = d.batchId ?? `untracked:${d.productId}:${d.unitPrice.toFixed(2)}`
           const existing = mergedDeductions.get(key)
           if (existing) {
             existing.qtyDeducted += d.qtyDeducted
@@ -201,11 +235,14 @@ export async function createSale(
           const lineTotal = d.qtyDeducted * d.unitPrice
 
           // Fetch batch ref for the receipt
-          const batchRefRes = await client.query(
-            'SELECT batch_ref FROM batches WHERE id = $1 LIMIT 1',
-            [d.batchId],
-          )
-          const batchRef = batchRefRes.rows[0]?.batch_ref ?? null
+          let batchRef: string | null = null
+          if (d.batchId) {
+            const batchRefRes = await client.query(
+              'SELECT batch_ref FROM batches WHERE id = $1 LIMIT 1',
+              [d.batchId],
+            )
+            batchRef = batchRefRes.rows[0]?.batch_ref ?? null
+          }
 
           // Insert sale_item
           await client.query(
@@ -224,12 +261,14 @@ export async function createSale(
           )
 
           // Decrement batch qty_remaining
-          await client.query(
-            `UPDATE batches
-             SET qty_remaining = qty_remaining - $1
-             WHERE id = $2 AND store_id = $3`,
-            [d.qtyDeducted, d.batchId, user.store_id],
-          )
+          if (d.batchId) {
+            await client.query(
+              `UPDATE batches
+               SET qty_remaining = qty_remaining - $1
+               WHERE id = $2 AND store_id = $3`,
+              [d.qtyDeducted, d.batchId, user.store_id],
+            )
+          }
 
           saleItemResults.push({
             productId: d.productId,
@@ -274,7 +313,7 @@ export async function getSales(filters?: {
   paymentMethod?: string
   page?: number
 }): Promise<
-  | { success: true; data: { sales: SaleRow[]; totalCount: number; totalPages: number; currentPage: number } }
+  | { success: true; data: { sales: SaleRow[]; totalCount: number; totalPages: number; currentPage: number; summary: SalesSummary } }
   | { success: false; error: string }
 > {
   const user = await getCurrentUser()
@@ -304,13 +343,15 @@ export async function getSales(filters?: {
     }
 
     if (filters?.dateFrom) {
-      conditions.push(`s.created_at >= $${idx++}`)
+      conditions.push(`s.created_at >= $${idx}::date`)
       params.push(filters.dateFrom)
+      idx++
     }
 
     if (filters?.dateTo) {
-      conditions.push(`s.created_at <= $${idx++}`)
+      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
       params.push(filters.dateTo)
+      idx++
     }
 
     const where = conditions.join(' AND ')
@@ -321,6 +362,21 @@ export async function getSales(filters?: {
     )
     const totalCount: number = countRes.rows[0].total
     const totalPages = Math.max(1, Math.ceil(totalCount / limit))
+
+    const summaryRes = await query(
+      `SELECT
+         COALESCE(SUM(s.total_amount), 0)::float AS total_revenue,
+         COUNT(DISTINCT s.id)::int AS transaction_count,
+         COALESCE(SUM(si.qty_sold), 0)::int AS total_units_sold
+       FROM sales s
+       LEFT JOIN sale_items si ON si.sale_id = s.id
+       WHERE ${where}`,
+      params,
+    )
+    const summaryRow = summaryRes.rows[0]
+    const totalRevenue = parseFloat(String(summaryRow.total_revenue)) || 0
+    const transactionCount = parseInt(String(summaryRow.transaction_count), 10) || 0
+    const totalUnitsSold = parseInt(String(summaryRow.total_units_sold), 10) || 0
 
     const dataRes = await query(
       `SELECT
@@ -351,6 +407,12 @@ export async function getSales(filters?: {
         totalCount,
         totalPages,
         currentPage: page,
+        summary: {
+          totalRevenue,
+          transactionCount,
+          avgTransactionValue: transactionCount > 0 ? totalRevenue / transactionCount : 0,
+          totalUnitsSold,
+        },
       },
     }
   } catch (err) {
@@ -485,7 +547,7 @@ export async function getSaleById(
          si.line_total
        FROM sale_items si
        JOIN products p ON p.id = si.product_id
-       JOIN batches b ON b.id = si.batch_id
+       LEFT JOIN batches b ON b.id = si.batch_id
        WHERE si.sale_id = $1
        ORDER BY p.name ASC`,
       [saleId],
@@ -507,6 +569,90 @@ export async function getSaleById(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch sale.'
+    return { success: false, error: message }
+  }
+}
+
+export async function getRetainedSalesCsvRows(filters?: {
+  dateFrom?: string
+  dateTo?: string
+  cashierId?: string
+  paymentMethod?: string
+}): Promise<{ success: true; data: SalesCsvRow[] } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  if (user.role !== 'owner') {
+    return { success: false, error: 'Only the store owner can export sales records.' }
+  }
+
+  try {
+    const conditions: string[] = [
+      's.store_id = $1',
+      "s.created_at >= NOW() - INTERVAL '720 hours'",
+    ]
+    const params: unknown[] = [user.store_id]
+    let idx = 2
+
+    if (filters?.cashierId) {
+      conditions.push(`s.cashier_id = $${idx++}`)
+      params.push(filters.cashierId)
+    }
+
+    if (filters?.paymentMethod) {
+      conditions.push(`s.payment_method = $${idx++}`)
+      params.push(filters.paymentMethod)
+    }
+
+    if (filters?.dateFrom) {
+      conditions.push(`s.created_at >= $${idx}::date`)
+      params.push(filters.dateFrom)
+      idx++
+    }
+
+    if (filters?.dateTo) {
+      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
+      params.push(filters.dateTo)
+      idx++
+    }
+
+    const result = await query(
+      `SELECT
+         s.created_at,
+         s.receipt_number,
+         p.name AS product_name,
+         si.qty_sold,
+         si.unit_price,
+         si.line_total,
+         s.payment_method,
+         s.total_amount AS sale_total,
+         u.name AS cashier_name
+       FROM sales s
+       JOIN sale_items si ON si.sale_id = s.id
+       JOIN products p ON p.id = si.product_id
+       LEFT JOIN users u ON u.id = s.cashier_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY s.created_at DESC, s.receipt_number ASC, p.name ASC`,
+      params,
+    )
+
+    return {
+      success: true,
+      data: result.rows.map((row) => ({
+        createdAt: row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : String(row.created_at),
+        receiptNumber: row.receipt_number as string,
+        productName: row.product_name as string,
+        qtySold: row.qty_sold as number,
+        unitPrice: row.unit_price as string,
+        lineTotal: row.line_total as string,
+        paymentMethod: row.payment_method as string,
+        saleTotal: row.sale_total as string,
+        cashierName: row.cashier_name as string | null,
+      })),
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to export sales records.'
     return { success: false, error: message }
   }
 }

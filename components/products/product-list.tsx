@@ -34,7 +34,10 @@ interface ProductListProps {
   totalCount: number
 }
 
-function getStockBadge(stock: number, reorderLevel: number) {
+function getStockBadge(product: ProductWithStock) {
+  if (!product.track_inventory) return <Badge variant="default">Not Tracked</Badge>
+  const stock = product.current_stock
+  const reorderLevel = product.reorder_level
   if (stock === 0) return <Badge variant="danger">Out of Stock</Badge>
   if (stock <= reorderLevel) return <Badge variant="warning">Low Stock</Badge>
   return <Badge variant="success">In Stock</Badge>
@@ -247,15 +250,21 @@ export function ProductList({
 
                   {/* Stock */}
                   <td className="px-4 py-3">
-                    <span className="text-sm text-text-primary">{product.current_stock}</span>
-                    <span className="text-[11px] text-text-muted ml-1">
-                      {product.unit}
-                    </span>
+                    {product.track_inventory ? (
+                      <>
+                        <span className="text-sm text-text-primary">{product.current_stock}</span>
+                        <span className="text-[11px] text-text-muted ml-1">
+                          {product.unit}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-text-muted">Not tracked</span>
+                    )}
                   </td>
 
                   {/* Status badge */}
                   <td className="px-4 py-3">
-                    {getStockBadge(product.current_stock, product.reorder_level)}
+                    {getStockBadge(product)}
                   </td>
 
                   {/* Actions */}

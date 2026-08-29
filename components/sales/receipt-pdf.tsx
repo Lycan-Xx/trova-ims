@@ -11,26 +11,39 @@ import {
 import { getCurrencySymbol } from '@/lib/currency'
 import type { SaleDetail } from '@/app/actions/sales'
 
-// Register Helvetica as the base font (built into PDF spec, no download needed)
+const RECEIPT_FONT = 'TrovaReceiptInter'
+
+Font.register({
+  family: RECEIPT_FONT,
+  fonts: [
+    { src: '/fonts/inter-400.woff2', fontWeight: 400 },
+    { src: '/fonts/inter-600.woff2', fontWeight: 600 },
+    { src: '/fonts/inter-700.woff2', fontWeight: 700 },
+  ],
+})
 Font.registerHyphenationCallback((word) => [word])
 
 const styles = StyleSheet.create({
   page: {
-    fontFamily: 'Helvetica',
-    fontSize: 9,
+    fontFamily: RECEIPT_FONT,
+    fontSize: 7.5,
     color: '#111111',
-    padding: 32,
+    paddingTop: 12,
+    paddingRight: 11,
+    paddingBottom: 14,
+    paddingLeft: 11,
     backgroundColor: '#ffffff',
   },
   // Header
   storeName: {
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 14,
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 700,
+    fontSize: 10.5,
     textAlign: 'center',
     marginBottom: 4,
   },
   storeInfo: {
-    fontSize: 8,
+    fontSize: 6.8,
     textAlign: 'center',
     color: '#555555',
     marginBottom: 2,
@@ -56,18 +69,20 @@ const styles = StyleSheet.create({
     color: '#555555',
   },
   metaValue: {
-    fontFamily: 'Helvetica-Bold',
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 600,
   },
   receiptLabel: {
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 11,
-    textAlign: 'right',
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 700,
+    fontSize: 8.5,
+    textAlign: 'center',
     marginBottom: 2,
   },
   receiptNumber: {
-    fontFamily: 'Helvetica',
-    fontSize: 9,
-    textAlign: 'right',
+    fontFamily: RECEIPT_FONT,
+    fontSize: 7.5,
+    textAlign: 'center',
     color: '#333333',
     marginBottom: 4,
   },
@@ -80,26 +95,33 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   tableHeaderText: {
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 8,
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 700,
+    fontSize: 7,
     color: '#333333',
   },
-  tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 3,
+  itemBlock: {
+    paddingVertical: 4,
     borderBottomWidth: 0.5,
     borderBottomColor: '#eeeeee',
   },
-  colName: {
-    flex: 3,
+  itemName: {
+    fontSize: 7.4,
+    marginBottom: 2,
   },
-  colQty: {
-    flex: 1,
-    textAlign: 'center',
+  itemDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  colAmount: {
-    flex: 1.5,
+  itemQtyPrice: {
+    fontSize: 7,
+    color: '#555555',
+  },
+  itemAmount: {
+    fontSize: 7.2,
+    fontWeight: 600,
     textAlign: 'right',
+    minWidth: 58,
   },
   // Totals
   totalSection: {
@@ -114,7 +136,8 @@ const styles = StyleSheet.create({
     color: '#555555',
   },
   totalValue: {
-    fontFamily: 'Helvetica-Bold',
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 600,
   },
   grandTotalRow: {
     flexDirection: 'row',
@@ -125,20 +148,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   grandTotalLabel: {
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 11,
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 700,
+    fontSize: 9.5,
   },
   grandTotalValue: {
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 11,
+    fontFamily: RECEIPT_FONT,
+    fontWeight: 700,
+    fontSize: 9.5,
   },
   // Footer
   footer: {
     marginTop: 16,
     textAlign: 'center',
     color: '#777777',
-    fontSize: 8,
-    fontStyle: 'italic',
+    fontSize: 6.8,
   },
   paymentBadge: {
     marginTop: 8,
@@ -146,7 +170,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 4,
     alignSelf: 'flex-start',
-    fontSize: 8,
+    fontSize: 7,
     color: '#444444',
   },
 })
@@ -169,6 +193,17 @@ const fmtDate = (iso: string) => {
   })
 }
 
+function estimateReceiptHeight(sale: SaleDetail, storeAddress: string, storePhone: string): number {
+  const base = 166
+  const storeLines = (storeAddress ? 8 : 0) + (storePhone ? 8 : 0)
+  const itemLines = sale.items.reduce((sum, item) => {
+    const nameLines = Math.max(1, Math.ceil(item.productName.length / 24))
+    return sum + 15 + nameLines * 8
+  }, 0)
+  const paymentLines = sale.payment_method === 'cash' ? 28 : 14
+  return Math.max(220, base + storeLines + itemLines + paymentLines)
+}
+
 interface ReceiptPDFProps {
   sale: SaleDetail
   storeName?: string
@@ -186,10 +221,11 @@ export function ReceiptPDF({
 }: ReceiptPDFProps) {
   const fmt = createFmtFunction(currency)
   const subtotal = sale.items.reduce((s, i) => s + parseFloat(i.lineTotal), 0)
+  const pageHeight = estimateReceiptHeight(sale, storeAddress, storePhone)
 
   return (
     <Document>
-      <Page size="A5" style={styles.page}>
+      <Page size={[164.4, pageHeight]} style={styles.page}>
         {/* Store header */}
         <Text style={styles.storeName}>{storeName}</Text>
         {storeAddress ? <Text style={styles.storeInfo}>{storeAddress}</Text> : null}
@@ -216,16 +252,20 @@ export function ReceiptPDF({
 
         {/* Items table */}
         <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderText, styles.colName]}>ITEM</Text>
-          <Text style={[styles.tableHeaderText, styles.colQty]}>QTY</Text>
-          <Text style={[styles.tableHeaderText, styles.colAmount]}>AMOUNT</Text>
+          <Text style={styles.tableHeaderText}>ITEMS</Text>
         </View>
 
         {sale.items.map((item, i) => (
-          <View key={i} style={styles.tableRow}>
-            <Text style={styles.colName}>{item.productName}</Text>
-            <Text style={styles.colQty}>{item.qtySold}</Text>
-            <Text style={styles.colAmount}>{fmt(item.lineTotal)}</Text>
+          <View key={i} style={styles.itemBlock}>
+            <Text style={styles.itemName}>{item.productName}</Text>
+            <View style={styles.itemDetailRow}>
+              <Text style={styles.itemQtyPrice} wrap={false}>
+                {item.qtySold} x {fmt(item.unitPrice)}
+              </Text>
+              <Text style={styles.itemAmount} wrap={false}>
+                {fmt(item.lineTotal)}
+              </Text>
+            </View>
           </View>
         ))}
 
@@ -234,25 +274,25 @@ export function ReceiptPDF({
           {sale.items.length > 1 && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Subtotal</Text>
-              <Text>{fmt(subtotal)}</Text>
+              <Text wrap={false}>{fmt(subtotal)}</Text>
             </View>
           )}
 
           <View style={styles.grandTotalRow}>
             <Text style={styles.grandTotalLabel}>TOTAL</Text>
-            <Text style={styles.grandTotalValue}>{fmt(sale.total_amount)}</Text>
+            <Text style={styles.grandTotalValue} wrap={false}>{fmt(sale.total_amount)}</Text>
           </View>
 
           {sale.payment_method === 'cash' && sale.amount_paid ? (
             <>
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Cash Received</Text>
-                <Text>{fmt(sale.amount_paid)}</Text>
+                <Text wrap={false}>{fmt(sale.amount_paid)}</Text>
               </View>
               {sale.change_given !== null && parseFloat(sale.change_given) > 0 ? (
                 <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>Change</Text>
-                  <Text style={styles.totalValue}>{fmt(sale.change_given)}</Text>
+                  <Text style={styles.totalValue} wrap={false}>{fmt(sale.change_given)}</Text>
                 </View>
               ) : null}
             </>

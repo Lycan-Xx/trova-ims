@@ -5,8 +5,8 @@
  * Pure function — no Tauri imports, safe to import in any environment.
  *
  * Paper widths:
- *   80 mm  →  48 printable characters per line
- *   58 mm  →  32 printable characters per line
+ *   80 mm  ->  48 printable characters per line
+ *   58 mm  ->  32 printable characters per line
  */
 
 import type { SaleDetail } from '@/app/actions/sales'
@@ -80,6 +80,42 @@ function separator(symbol = '-'): PrintSection {
   return { Line: { character: symbol } }
 }
 
+function fitLine(value: string, chars: number): string {
+  return value.length > chars ? value.slice(0, Math.max(0, chars - 1)) + '…' : value
+}
+
+function wrapWords(value: string, chars: number): string[] {
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return ['']
+
+  const lines: string[] = []
+  let current = ''
+
+  for (const word of words) {
+    if (word.length > chars) {
+      if (current) {
+        lines.push(current)
+        current = ''
+      }
+      for (let i = 0; i < word.length; i += chars) {
+        lines.push(word.slice(i, i + chars))
+      }
+      continue
+    }
+
+    const next = current ? `${current} ${word}` : word
+    if (next.length > chars) {
+      lines.push(current)
+      current = word
+    } else {
+      current = next
+    }
+  }
+
+  if (current) lines.push(current)
+  return lines
+}
+
 /**
  * Build a padded two-column row: label on the left, value on the right.
  * Truncates label if it would overflow.
@@ -90,30 +126,29 @@ function row(
   chars: number,
   bold = false,
 ): PrintSection {
+  if (value.length >= chars) {
+    return text(value, bold ? { bold: true, align: 'right' } : { align: 'right' })
+  }
+
   const padding = chars - label.length - value.length
   const safeLabel =
     padding < 1
-      ? label.slice(0, chars - value.length - 1) + ' '
+      ? fitLine(label, chars - value.length - 1) + ' '
       : label + ' '.repeat(padding)
   return text(safeLabel + value, bold ? { bold: true } : undefined)
 }
 
-/** Three-column row: name | qty (right-pad) | total (right-align). */
-function itemRow(
-  name: string,
-  qty: string,
-  total: string,
+function itemDetailRow(
+  left: string,
+  right: string,
   chars: number,
 ): PrintSection {
-  // Allocate: total=10, qty=5, name=rest
-  const totalW = 10
-  const qtyW = 5
-  const nameW = chars - qtyW - totalW
-  const safeName =
-    name.length > nameW ? name.slice(0, nameW - 1) + '…' : name.padEnd(nameW)
-  const safeQty = qty.padStart(qtyW)
-  const safeTotal = total.padStart(totalW)
-  return text(safeName + safeQty + safeTotal)
+  if (right.length >= chars) return text(right, { align: 'right' })
+
+  const indent = '  '
+  const safeLeft = fitLine(left, chars - right.length - indent.length - 1)
+  const padding = Math.max(1, chars - indent.length - safeLeft.length - right.length)
+  return text(`${indent}${safeLeft}${' '.repeat(padding)}${right}`)
 }
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -143,7 +178,7 @@ export function buildEscPosReceipt(
 
   // ── Store header ──────────────────────────────────────────────────
   if (storeName) {
-    sections.push(text(storeName, { bold: true, align: 'center', size: 'double' }))
+    sections.push(text(storeName, { bold: true, align: 'center', size: paperWidth === 58 ? 'normal' : 'double' }))
   }
   if (storeAddress) {
     sections.push(text(storeAddress, { align: 'center' }))
@@ -165,20 +200,19 @@ export function buildEscPosReceipt(
 
   sections.push(separator('-'))
 
-  // ── Items table header ────────────────────────────────────────────
-  sections.push(itemRow('Item', 'Qty', 'Total', chars))
+  // ── Items ─────────────────────────────────────────────────────────
+  sections.push(text('Items', { bold: true }))
   sections.push(separator('-'))
 
-  // ── Items ─────────────────────────────────────────────────────────
   for (const item of sale.items) {
-    sections.push(
-      itemRow(
-        item.productName,
-        String(item.qtySold),
-        fmt(item.lineTotal, currencySymbol),
-        chars,
-      ),
-    )
+    const unitPrice = fmt(item.unitPrice, currencySymbol)
+    const lineTotal = fmt(item.lineTotal, currencySymbol)
+    const detail = `${item.qtySold} x ${unitPrice}`
+
+    for (const line of wrapWords(item.productName, chars)) {
+      sections.push(text(line))
+    }
+    sections.push(itemDetailRow(detail, lineTotal, chars))
   }
 
   sections.push(separator('-'))

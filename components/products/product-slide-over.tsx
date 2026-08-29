@@ -126,6 +126,7 @@ export function ProductSlideOver({
   const [categoryId, setCategoryId] = React.useState<string>('')
   const [unit, setUnit] = React.useState<UnitType>('piece')
   const [sellingPrice, setSellingPrice] = React.useState('')
+  const [trackInventory, setTrackInventory] = React.useState(true)
   const [reorderLevel, setReorderLevel] = React.useState('10')
   const [description, setDescription] = React.useState('')
   const [barcode, setBarcode] = React.useState('')
@@ -141,6 +142,7 @@ export function ProductSlideOver({
       setCategoryId(product.category_id ?? ''  )
       setUnit(product.unit)
       setSellingPrice(product.selling_price)
+      setTrackInventory(product.track_inventory)
       setReorderLevel(String(product.reorder_level))
       setDescription(product.description ?? '')
       setBarcode(product.barcode ?? '')
@@ -149,6 +151,7 @@ export function ProductSlideOver({
       setCategoryId('')
       setUnit('piece')
       setSellingPrice('')
+      setTrackInventory(true)
       setReorderLevel('10')
       setDescription('')
       setBarcode(defaultBarcode ?? '')
@@ -178,6 +181,7 @@ export function ProductSlideOver({
         setCategoryId(result.data.category_id ?? '')
         setUnit(result.data.unit)
         setSellingPrice(result.data.selling_price)
+        setTrackInventory(result.data.track_inventory)
         setReorderLevel(String(result.data.reorder_level))
         setDescription(result.data.description ?? '')
       } else {
@@ -190,6 +194,7 @@ export function ProductSlideOver({
             setCategoryId('')
             setUnit('piece')
             setSellingPrice('')
+            setTrackInventory(true)
             setReorderLevel('10')
             setDescription('')
           }
@@ -212,7 +217,7 @@ export function ProductSlideOver({
     if (!sellingPrice || isNaN(price) || price <= 0)
       next.sellingPrice = 'Enter a valid price greater than 0.'
     const reorder = parseInt(reorderLevel, 10)
-    if (isNaN(reorder) || reorder < 0)
+    if (trackInventory && (isNaN(reorder) || reorder < 0))
       next.reorderLevel = 'Reorder level must be 0 or more.'
     if (description.length > 300)
       next.description = 'Max 300 characters.'
@@ -232,7 +237,8 @@ export function ProductSlideOver({
       categoryId: categoryId || undefined,
       unit,
       sellingPrice: parseFloat(sellingPrice),
-      reorderLevel: parseInt(reorderLevel, 10),
+      reorderLevel: trackInventory ? parseInt(reorderLevel, 10) : 0,
+      trackInventory,
       description: description.trim() || undefined,
       barcode: barcode.trim() || undefined,
     }
@@ -279,6 +285,7 @@ export function ProductSlideOver({
         // the category selected, since bulk entry is usually similar items.
         setName('')
         setSellingPrice('')
+        setTrackInventory(true)
         setReorderLevel('10')
         setDescription('')
         setBarcode('')
@@ -433,21 +440,64 @@ export function ProductSlideOver({
                 </div>
               </Field>
 
+              {/* Track inventory */}
+              <div
+                className="flex items-start justify-between gap-4 rounded-lg px-3 py-3"
+                style={{
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    Track stock
+                  </p>
+                  <p className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>
+                    {activeProduct?.track_inventory === false
+                      ? 'Record fresh stock intake to turn tracking back on for this product.'
+                      : 'Turn off for services or made-to-order items that should stay sellable without stock intake.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={trackInventory}
+                  disabled={activeProduct?.track_inventory === false}
+                  onClick={() => setTrackInventory((value) => !value)}
+                  className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{
+                    background: trackInventory ? 'var(--accent-primary)' : 'var(--border)',
+                    border: 'none',
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 h-4 w-4 rounded-full bg-white transition-transform"
+                    style={{
+                      left: 4,
+                      transform: trackInventory ? 'translateX(20px)' : 'translateX(0)',
+                    }}
+                  />
+                </button>
+              </div>
+
               {/* Reorder Level */}
-              <Field label="Reorder Level" error={errors.reorderLevel}>
-                <input
-                  type="number"
-                  value={reorderLevel}
-                  onChange={(e) => setReorderLevel(e.target.value)}
-                  placeholder="10"
-                  min={0}
-                  className={inputClass}
-                  style={errors.reorderLevel ? { borderColor: 'var(--danger)' } : undefined}
-                />
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  You&apos;ll get a low-stock alert once quantity on hand drops to this number or below.
-                </p>
-              </Field>
+              {trackInventory && (
+                <Field label="Reorder Level" error={errors.reorderLevel}>
+                  <input
+                    type="number"
+                    value={reorderLevel}
+                    onChange={(e) => setReorderLevel(e.target.value)}
+                    placeholder="10"
+                    min={0}
+                    className={inputClass}
+                    style={errors.reorderLevel ? { borderColor: 'var(--danger)' } : undefined}
+                  />
+                  <p className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    You&apos;ll get a low-stock alert once quantity on hand drops to this number or below.
+                  </p>
+                </Field>
+              )}
 
               {/* Description */}
               <Field label="Description (optional)" error={errors.description}>

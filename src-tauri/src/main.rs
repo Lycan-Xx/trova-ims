@@ -36,6 +36,11 @@ const SERVER_PORT: u16 = 47821;
 const STARTUP_ATTEMPTS: u16 = 200;
 const STARTUP_POLL_MS: u64 = 150;
 
+#[tauri::command]
+fn open_main_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 struct HealthStatus {
     healthy: bool,
     status_line: String,
@@ -415,6 +420,7 @@ fn main() {
     }
 
     let app = builder
+        .invoke_handler(tauri::generate_handler![open_main_devtools])
         .setup(|app| {
             if tauri::is_dev() {
                 return Ok(());

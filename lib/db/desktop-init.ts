@@ -137,10 +137,18 @@ async function initializeDesktopDb(): Promise<PGlite> {
     await instance.exec(sql)
   }
 
+  const purgeExpiredSales = async (instance: PGlite) => {
+    await instance.query(
+      `DELETE FROM sales
+       WHERE created_at < NOW() - INTERVAL '720 hours'`,
+    )
+  }
+
   let db: PGlite | null = null
   try {
     db = new PGlite(dbPath)
     await applySchema(db)
+    await purgeExpiredSales(db)
     desktopDbState.db = db
   } catch (error) {
     console.error(`[desktop-db] Failed to initialize local database: ${error}`)

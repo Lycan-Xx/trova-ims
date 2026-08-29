@@ -17,6 +17,34 @@ function getInitials(name: string | null | undefined): string {
 }
 
 const ALERT_COUNT = 0
+const ENABLE_ACCOUNT_FEATURES = false
+
+const PRINTER_STATE_LABEL: Record<ReturnType<typeof usePrinterStatus>['state'], string> = {
+  not_configured: 'No printer configured',
+  checking: 'Checking printer status',
+  available: 'Printer connected',
+  unavailable: 'Printer unavailable',
+  printing: 'Printing receipt',
+  error: 'Printer error',
+}
+
+const PRINTER_STATE_TITLE: Record<ReturnType<typeof usePrinterStatus>['state'], string> = {
+  not_configured: 'No thermal printer configured — go to Settings → Printer Setup',
+  checking: 'Checking the configured thermal printer',
+  available: 'Thermal printer connected and ready',
+  unavailable: 'Configured printer not found — check connection',
+  printing: 'Receipt is being sent to the printer',
+  error: 'The last print attempt failed',
+}
+
+const PRINTER_STATE_COLOR: Record<ReturnType<typeof usePrinterStatus>['state'], string> = {
+  not_configured: 'var(--text-muted)',
+  checking: 'var(--text-muted)',
+  available: '#22c55e',
+  unavailable: 'var(--text-muted)',
+  printing: '#f59e0b',
+  error: 'var(--danger)',
+}
 
 // A hardware scanner "types" into whatever's focused, character by
 // character, only a few milliseconds apart — far faster than any human
@@ -128,20 +156,8 @@ export function Topbar() {
         {isTauri && (
           <div
             role="status"
-            aria-label={
-              printerStatus.online
-                ? 'Printer connected'
-                : printerStatus.configured
-                ? 'Printer configured but offline'
-                : 'No printer configured'
-            }
-            title={
-              printerStatus.online
-                ? 'Thermal printer connected and ready'
-                : printerStatus.configured
-                ? 'Configured printer not found — check connection'
-                : 'No thermal printer configured — go to Settings → Printer Setup'
-            }
+            aria-label={PRINTER_STATE_LABEL[printerStatus.state]}
+            title={printerStatus.error ?? PRINTER_STATE_TITLE[printerStatus.state]}
             style={{
               position: 'relative',
               display: 'flex',
@@ -150,14 +166,12 @@ export function Topbar() {
               width: 32,
               height: 32,
               borderRadius: 6,
-              color: printerStatus.online
-                ? '#22c55e'
-                : 'var(--text-muted)',
+              color: PRINTER_STATE_COLOR[printerStatus.state],
               transition: 'color 200ms ease',
             }}
           >
             <Printer size={17} strokeWidth={1.75} />
-            {printerStatus.online && (
+            {printerStatus.state === 'available' || printerStatus.state === 'printing' || printerStatus.state === 'error' ? (
               <span
                 aria-hidden="true"
                 style={{
@@ -167,11 +181,11 @@ export function Topbar() {
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  backgroundColor: '#22c55e',
+                  backgroundColor: PRINTER_STATE_COLOR[printerStatus.state],
                   border: '1.5px solid var(--bg-nav)',
                 }}
               />
-            )}
+            ) : null}
           </div>
         )}
 
@@ -250,50 +264,54 @@ export function Topbar() {
           )}
         </button>
 
-        {/* Sign out */}
-        <button
-          type="button"
-          onClick={handleSignOut}
-          aria-label="Sign out"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-          }}
-        >
-          <LogOut size={16} strokeWidth={1.75} />
-        </button>
+        {ENABLE_ACCOUNT_FEATURES && (
+          <>
+            {/* Sign out */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <LogOut size={16} strokeWidth={1.75} />
+            </button>
 
-        {/* User avatar */}
-        <div
-          aria-label={session?.user?.name ?? 'User'}
-          role="img"
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: '50%',
-            backgroundColor: 'var(--accent-primary-muted)',
-            border: '1.5px solid var(--accent-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--accent-primary)',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.02em',
-            userSelect: 'none',
-            flexShrink: 0,
-          }}
-        >
-          {initials}
-        </div>
+            {/* User avatar */}
+            <div
+              aria-label={session?.user?.name ?? 'User'}
+              role="img"
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: '50%',
+                backgroundColor: 'var(--accent-primary-muted)',
+                border: '1.5px solid var(--accent-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--accent-primary)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                userSelect: 'none',
+                flexShrink: 0,
+              }}
+            >
+              {initials}
+            </div>
+          </>
+        )}
       </div>
     </header>
   )

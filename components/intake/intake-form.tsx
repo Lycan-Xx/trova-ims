@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Check, ChevronsUpDown, ChevronLeft, Loader2, Plus, X, ScanBarcode } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ChevronsUpDown, ChevronLeft, Loader2, Plus, X, ScanBarcode } from 'lucide-react'
 import Link from 'next/link'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -559,6 +559,8 @@ interface IntakeLineCardProps {
   products: ProductWithStock[]
   vendors: VendorWithStats[]
   errors: LineErrors
+  collapsed: boolean
+  onToggleCollapsed: () => void
   onUpdate: (patch: Partial<LineState>) => void
   onRemove: () => void
   onCreateProduct: (barcode?: string) => void
@@ -573,6 +575,8 @@ function IntakeLineCard({
   products,
   vendors,
   errors,
+  collapsed,
+  onToggleCollapsed,
   onUpdate,
   onRemove,
   onCreateProduct,
@@ -590,6 +594,18 @@ function IntakeLineCard({
   const totalUnits = lineTotalUnits(line)
   const costPerUnit = lineCostPerUnit(line)
   const grossMargin = lineGrossMargin(line)
+  const selectedProduct = products.find((p) => p.id === line.productId)
+  const selectedVendor = vendors.find((v) => v.id === line.vendorId)
+  const hasErrors = Object.keys(errors).length > 0
+  const quantityLabel = totalUnits > 0
+    ? `${totalUnits.toLocaleString()} ${selectedProduct?.unit ?? 'units'}`
+    : 'Quantity not set'
+  const costLabel = costPerUnit !== null
+    ? `${getCurrencySymbol(currency)}${fmt(costPerUnit)} cost/unit`
+    : 'Cost not set'
+  const priceLabel = line.sellingPrice
+    ? `${getCurrencySymbol(currency)}${fmt(line.sellingPrice)} selling`
+    : 'Selling price not set'
 
   function handleVendorChange(vendorId: string) {
     if (!vendorId) {
@@ -633,21 +649,66 @@ function IntakeLineCard({
       number={index + 1}
       title={total > 1 ? `Item ${index + 1}` : 'What are you receiving?'}
       action={
-        total > 1 ? (
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={onRemove}
-            aria-label="Remove this item"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? 'Expand this item' : 'Collapse this item'}
+            title={collapsed ? 'Expand' : 'Collapse'}
             className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors"
             style={{ color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--bg-input)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'var(--bg-input)' }}
             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
           >
-            <X size={15} />
+            {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
           </button>
-        ) : undefined
+          {total > 1 ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label="Remove this item"
+              className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--bg-input)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <X size={15} />
+            </button>
+          ) : null}
+        </div>
       }
     >
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-4 py-3 text-left transition-colors"
+          style={{
+            background: 'var(--bg-input)',
+            border: `1px solid ${hasErrors ? 'var(--danger)' : 'var(--border)'}`,
+          }}
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              {selectedProduct?.name ?? 'No product selected'}
+            </span>
+            <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span>{selectedVendor?.name ?? 'No vendor'}</span>
+              <span>{quantityLabel}</span>
+              <span>{costLabel}</span>
+              <span>{priceLabel}</span>
+              {line.hasExpiry && line.expiryDate ? <span>Expires {line.expiryDate}</span> : null}
+            </span>
+          </span>
+          <span
+            className="text-xs font-medium"
+            style={{ color: hasErrors ? 'var(--danger)' : 'var(--accent-primary)' }}
+          >
+            {hasErrors ? 'Needs attention' : 'Edit'}
+          </span>
+        </button>
+      ) : (
+      <>
       {/* Barcode scan — a faster way to fill in Product below, not a
           separate field of its own. Scanning selects the matching product;
           an unrecognized code opens the create-product panel with it
@@ -891,6 +952,8 @@ function IntakeLineCard({
           </div>
         </Field>
       )}
+      </>
+      )}
     </Section>
   )
 }
@@ -935,6 +998,7 @@ export function IntakeForm({ products, vendors, categories, defaultProductId, de
     return [first]
   })
   const [lineErrors, setLineErrors] = React.useState<Record<string, LineErrors>>({})
+  const [collapsedLineKeys, setCollapsedLineKeys] = React.useState<Set<string>>(() => new Set())
 
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -955,14 +1019,33 @@ export function IntakeForm({ products, vendors, categories, defaultProductId, de
   }
 
   function addLine() {
-    setLines((prev) => [...prev, emptyLine()])
+    const next = emptyLine()
+    setCollapsedLineKeys(new Set(lines.map((line) => line.key)))
+    setLines((prev) => [...prev, next])
   }
 
   function removeLine(key: string) {
     setLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.key !== key)))
+    setCollapsedLineKeys((prev) => {
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
     setLineErrors((prev) => {
       const next = { ...prev }
       delete next[key]
+      return next
+    })
+  }
+
+  function toggleLineCollapsed(key: string) {
+    setCollapsedLineKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
       return next
     })
   }
@@ -1026,6 +1109,13 @@ export function IntakeForm({ products, vendors, categories, defaultProductId, de
     setLineErrors(nextLineErrors)
 
     if (hasErrors) {
+      setCollapsedLineKeys((prev) => {
+        const next = new Set(prev)
+        for (const key of Object.keys(nextLineErrors)) {
+          next.delete(key)
+        }
+        return next
+      })
       setTimeout(() => {
         const el = document.querySelector('[data-error="true"]')
         el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1117,6 +1207,8 @@ export function IntakeForm({ products, vendors, categories, defaultProductId, de
           products={localProducts}
           vendors={localVendors}
           errors={lineErrors[line.key] ?? {}}
+          collapsed={collapsedLineKeys.has(line.key)}
+          onToggleCollapsed={() => toggleLineCollapsed(line.key)}
           onUpdate={(patch) => updateLine(line.key, patch)}
           onRemove={() => removeLine(line.key)}
           onCreateProduct={(barcode) => openCreateProduct(line.key, barcode)}

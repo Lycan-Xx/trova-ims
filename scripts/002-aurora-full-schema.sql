@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS products (
   unit            unit_type NOT NULL DEFAULT 'piece',
   selling_price   DECIMAL(12,2) NOT NULL,
   reorder_level   INTEGER NOT NULL DEFAULT 10,
+  track_inventory BOOLEAN NOT NULL DEFAULT TRUE,
   is_active       BOOLEAN NOT NULL DEFAULT TRUE,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -158,7 +159,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sale_id     UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
   product_id  UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
-  batch_id    UUID NOT NULL REFERENCES batches(id) ON DELETE RESTRICT,
+  batch_id    UUID REFERENCES batches(id) ON DELETE SET NULL,
   qty_sold    INTEGER NOT NULL,
   unit_price  DECIMAL(12,2) NOT NULL,
   line_total  DECIMAL(12,2) NOT NULL

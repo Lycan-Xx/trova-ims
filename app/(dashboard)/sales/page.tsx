@@ -11,6 +11,13 @@ export const metadata = {
   title: 'Sales History | StockSmart',
 }
 
+function formatLocalDateInput(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default async function SalesPage({ searchParams }: PageProps) {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
@@ -18,8 +25,10 @@ export default async function SalesPage({ searchParams }: PageProps) {
   const params = await searchParams
 
   const page = params.page ? parseInt(String(params.page), 10) : 1
-  const dateFrom = params.dateFrom ? String(params.dateFrom) : undefined
-  const dateTo = params.dateTo ? String(params.dateTo) : undefined
+  const hasExplicitDateFilter = !!params.dateFrom || !!params.dateTo
+  const today = formatLocalDateInput(new Date())
+  const dateFrom = params.dateFrom ? String(params.dateFrom) : hasExplicitDateFilter ? undefined : today
+  const dateTo = params.dateTo ? String(params.dateTo) : hasExplicitDateFilter ? undefined : today
   const paymentMethod = params.paymentMethod ? String(params.paymentMethod) : undefined
   let cashierId = params.cashierId ? String(params.cashierId) : undefined
   
@@ -34,25 +43,23 @@ export default async function SalesPage({ searchParams }: PageProps) {
 
   const salesData = salesResult.success
     ? salesResult.data
-    : { sales: [], totalCount: 0, totalPages: 1, currentPage: 1 }
+    : {
+        sales: [],
+        totalCount: 0,
+        totalPages: 1,
+        currentPage: 1,
+        summary: {
+          totalRevenue: 0,
+          transactionCount: 0,
+          avgTransactionValue: 0,
+          totalUnitsSold: 0,
+        },
+      }
 
   const cashiers = cashiersResult.success ? cashiersResult.data : []
 
-  // Compute summary totals for owners from this page's data
-  // (in a real app this would be a separate aggregation query scoped to filters)
-  let summary: { totalRevenue: number; transactionCount: number; avgTransactionValue: number } | undefined
-
-  if (user.role === 'owner' && salesData.totalCount > 0) {
-    const totalRevenue = salesData.sales.reduce(
-      (sum, s) => sum + parseFloat(s.total_amount),
-      0,
-    )
-    const transactionCount = salesData.totalCount
-    const avgTransactionValue =
-      salesData.sales.length > 0 ? totalRevenue / salesData.sales.length : 0
-
-    summary = { totalRevenue, transactionCount, avgTransactionValue }
-  }
+  const summary = user.role === 'owner' ? salesData.summary : undefined
+  const summaryLabel = !hasExplicitDateFilter ? 'Today' : 'Selected Range'
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -77,7 +84,10 @@ export default async function SalesPage({ searchParams }: PageProps) {
         currentPage={salesData.currentPage}
         isOwner={user.role === 'owner'}
         cashiers={cashiers}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         summary={summary}
+        summaryLabel={summaryLabel}
       />
     </div>
   )

@@ -84,6 +84,7 @@ export async function getSalesAnalytics(
          SUM(si.line_total)::float                                   AS revenue,
          AVG(
            CASE
+             WHEN b.id IS NULL THEN 0
              WHEN si.unit_price > 0
              THEN ((si.unit_price - b.cost_per_unit) / si.unit_price) * 100
              ELSE 0
@@ -92,7 +93,7 @@ export async function getSalesAnalytics(
        FROM sale_items si
        JOIN sales s   ON s.id = si.sale_id
        JOIN products p ON p.id = si.product_id
-       JOIN batches b  ON b.id = si.batch_id
+       LEFT JOIN batches b ON b.id = si.batch_id
        WHERE s.store_id = $1
          AND s.created_at::date >= $2::date
          AND s.created_at::date <= $3::date
