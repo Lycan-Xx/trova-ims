@@ -58,6 +58,31 @@ fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let parsed = Url::parse(&url).map_err(|_| "The link is not a valid URL.".to_string())?;
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https" | "mailto") {
+        return Err("Only web and email links can be opened externally.".to_string());
+    }
+    if matches!(scheme.as_str(), "http" | "https") && parsed.host_str().is_none() {
+        return Err("The web link does not include a valid host.".to_string());
+    }
+
+    #[cfg(windows)]
+    let mut command = Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = Command::new("xdg-open");
+
+    command
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|err| format!("Could not open the default browser: {err}"))
+}
+
 struct HealthStatus {
     healthy: bool,
     status_line: String,
@@ -347,6 +372,7 @@ fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
     log_path: &std::path::Path,
+    documents_dir: Option<&std::path::Path>,
 ) -> std::io::Result<Child> {
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
     let server_js = standalone_dir.join("server.js");
@@ -386,6 +412,13 @@ fn spawn_local_server(
         .env("PATH", std::env::var("PATH").unwrap_or_default())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_clone));
+
+    if let Some(documents_dir) = documents_dir {
+        cmd.env(
+            "TROVA_DOCUMENTS_DIR",
+            strip_verbatim_prefix(documents_dir),
+        );
+    }
 
     hide_console(&mut cmd);
 
@@ -439,7 +472,7 @@ fn main() {
     }
 
     let app = builder
-        .invoke_handler(tauri::generate_handler![open_main_devtools])
+        .invoke_handler(tauri::generate_handler![open_main_devtools, open_external_url])
         .setup(|app| {
             if tauri::is_dev() {
                 return Ok(());
@@ -465,8 +498,9 @@ fn main() {
             }
 
             let log_path = data_dir.join("server.log");
+            let documents_dir = app.path().document_dir().ok();
 
-            match spawn_local_server(&resource_dir, &data_dir, &log_path) {
+            match spawn_local_server(&resource_dir, &data_dir, &log_path, documents_dir.as_deref()) {
                 Err(err) => {
                     eprintln!("[trova-ims] Failed to start local server: {err}");
                     show_startup_error(

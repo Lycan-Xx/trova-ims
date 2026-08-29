@@ -10,6 +10,7 @@ const standaloneDir = path.join(root, '.next', 'standalone')
 const serverJs = path.join(standaloneDir, 'server.js')
 const port = Number(process.env.TROVA_SMOKE_PORT || 47829)
 const dataDir = mkdtempSync(path.join(tmpdir(), 'trova-desktop-smoke-'))
+const documentsDir = path.join(dataDir, 'Documents')
 const output = []
 
 function remember(chunk) {
@@ -80,6 +81,7 @@ const child = spawn(process.execPath, [serverJs], {
     HOSTNAME: '127.0.0.1',
     DESKTOP_MODE: 'true',
     TROVA_DATA_DIR: dataDir,
+    TROVA_DOCUMENTS_DIR: documentsDir,
     TROVA_DESKTOP_VERSION: process.env.npm_package_version || packageVersion,
     BETTER_AUTH_SECRET: 'desktop-smoke-not-used',
   },

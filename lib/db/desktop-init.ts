@@ -11,6 +11,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { runDesktopSalesExportIfDue, scheduleDesktopSalesExport } from '../desktop-sales-export'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
 // These match the VALUES in scripts/desktop-schema.sql — kept in one place
@@ -148,8 +149,29 @@ async function initializeDesktopDb(): Promise<PGlite> {
   try {
     db = new PGlite(dbPath)
     await applySchema(db)
-    await purgeExpiredSales(db)
+
+    // Export before purging. The local database intentionally retains only
+    // about 30 days of sales, so a failed Documents write must never be
+    // followed by deletion of the records that still need exporting.
+    const exportResult = await runDesktopSalesExportIfDue(
+      db,
+      dirname(dbPath),
+      DESKTOP_LOCAL_STORE_ID,
+    )
+    if (exportResult.success) {
+      await purgeExpiredSales(db)
+    } else {
+      console.error('[desktop-db] Skipping expired-sales purge because the scheduled export failed.')
+    }
+
     desktopDbState.db = db
+
+    scheduleDesktopSalesExport(
+      db,
+      dirname(dbPath),
+      DESKTOP_LOCAL_STORE_ID,
+      exportResult.nextDelayMs,
+    )
   } catch (error) {
     console.error(`[desktop-db] Failed to initialize local database: ${error}`)
     try { await db?.close() } catch {}

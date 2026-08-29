@@ -6,6 +6,7 @@ import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
 import { PrinterSetup } from '@/components/settings/printer-setup'
 import { CustomerDisplaySetup } from '@/components/customer-display/customer-display-setup'
+import { ExternalLink } from '@/components/ui/external-link'
 import packageJson from '@/package.json'
 
 export const metadata = { title: 'Settings — StockSmart' }
@@ -124,30 +125,26 @@ export default async function SettingsPage() {
           </div>
           <p>
             Built by{' '}
-            <a
+            <ExternalLink
               href="https://lycanforge.com.ng"
-              target="_blank"
-              rel="noopener noreferrer"
               className="font-bold hover:underline"
               style={{ color: '#f59e0b' }}
             >
               LycanForge
-            </a>
+            </ExternalLink>
           </p>
           <div>
             <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Support</p>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <a href="mailto:client@lycanforge.com.ng" className="hover:text-white transition-colors">
+              <ExternalLink href="mailto:client@lycanforge.com.ng" className="hover:text-white transition-colors">
                 client@lycanforge.com.ng
-              </a>
-              <a
+              </ExternalLink>
+              <ExternalLink
                 href="https://wa.me/2347058392920"
-                target="_blank"
-                rel="noopener noreferrer"
                 className="hover:text-white transition-colors"
               >
                 +234 705 839 2920 on WhatsApp
-              </a>
+              </ExternalLink>
             </div>
           </div>
           <div>
@@ -159,27 +156,23 @@ export default async function SettingsPage() {
               permission from LycanForge is prohibited.
             </p>
           </div>
-          <a
+          <ExternalLink
             href="https://trova.lycanforge.com.ng/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
             className="w-fit hover:text-white transition-colors"
           >
             Privacy Policy
-          </a>
+          </ExternalLink>
         </div>
       </section>
 
       {/* Legal + version footer */}
       <div className="flex items-center justify-center gap-4 py-8 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <a
+        <ExternalLink
           href="https://trova.lycanforge.com.ng/privacy"
-          target="_blank"
-          rel="noopener noreferrer"
           className="hover:text-white transition-colors"
         >
           Privacy Policy
-        </a>
+        </ExternalLink>
         <span>•</span>
         <span>© {new Date().getFullYear()} Trova</span>
         <span>•</span>

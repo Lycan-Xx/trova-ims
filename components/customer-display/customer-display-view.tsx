@@ -55,8 +55,10 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
   const completionActiveRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
+    let active = true
     let unlisten: (() => void) | undefined
     const applyCustomerDisplayUpdate = (nextCart: CustomerDisplayCart) => {
+      if (!active) return
       if (nextCart.status === 'complete') {
         completionActiveRef.current = nextCart.completedAt ?? Date.now()
       } else if (completionActiveRef.current !== null) {
@@ -70,19 +72,43 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
       setCart(nextCart)
     }
 
-    void listen<CustomerDisplayCart>(CUSTOMER_DISPLAY_EVENT, (event) => applyCustomerDisplayUpdate(event.payload))
-      .then((cleanup) => {
-        unlisten = cleanup
-        const snapshot = getCustomerDisplaySnapshot()
-        if (snapshot) applyCustomerDisplayUpdate(snapshot)
-      })
-    return () => unlisten?.()
+    // Claim the persisted state before registering the async listener. This
+    // gives the stale-event guard a completion timestamp immediately, so an
+    // old idle event cannot replace a completion during listener startup.
+    const snapshot = getCustomerDisplaySnapshot()
+    if (snapshot) applyCustomerDisplayUpdate(snapshot)
+
+    async function subscribe() {
+      const cleanup = await listen<CustomerDisplayCart>(
+        CUSTOMER_DISPLAY_EVENT,
+        (event) => applyCustomerDisplayUpdate(event.payload),
+      )
+      if (!active) {
+        cleanup()
+        return
+      }
+      unlisten = cleanup
+
+      // Read again after subscribing in case the snapshot changed while the
+      // Tauri listener was being registered.
+      const latestSnapshot = getCustomerDisplaySnapshot()
+      if (latestSnapshot) applyCustomerDisplayUpdate(latestSnapshot)
+    }
+
+    void subscribe()
+    return () => {
+      active = false
+      unlisten?.()
+    }
   }, [])
 
   React.useEffect(() => {
     if (cart.status !== 'complete') return
-    const elapsed = cart.completedAt ? Date.now() - cart.completedAt : 0
+    const completionTimestamp = cart.completedAt ?? completionActiveRef.current ?? Date.now()
+    const elapsed = Date.now() - completionTimestamp
     const reset = window.setTimeout(() => {
+      // A newer completion may have arrived while this timer was pending.
+      if (completionActiveRef.current !== completionTimestamp) return
       completionActiveRef.current = null
       clearCustomerDisplaySnapshot()
       setCart({ ...EMPTY_CART, storeName: cart.storeName, currencySymbol: cart.currencySymbol })

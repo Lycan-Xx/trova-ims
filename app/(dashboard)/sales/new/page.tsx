@@ -267,6 +267,7 @@ export default function NewSalePage() {
       items: [],
       total: 0,
       status: 'idle',
+      saleStartedAt: payload?.saleStartedAt ?? customerSaleStartedAtRef.current,
     }))
   }, [])
 
