@@ -8,6 +8,10 @@ import {
   getPrinterSettings,
   isPrinterConfigured,
 } from '@/lib/printer-settings'
+import {
+  notifyPrinterActivity,
+  requestPrinterStatusRefresh,
+} from '@/lib/printer-status-events'
 import { buildEscPosReceipt } from '@/lib/receipt/escpos-renderer'
 import { useCurrency } from '@/lib/currency-context'
 
@@ -58,6 +62,7 @@ export function PrintReceiptButton({
     }
 
     setPrinting(true)
+    notifyPrinterActivity({ state: 'printing' })
     try {
       const currencySymbol =
         currency === 'NGN'
@@ -101,6 +106,8 @@ export function PrintReceiptButton({
         printJobRequest,
       })
 
+      notifyPrinterActivity({ state: 'idle' })
+      requestPrinterStatusRefresh()
       toast.success('Receipt printed.')
     } catch (err) {
       const message =
@@ -109,6 +116,8 @@ export function PrintReceiptButton({
           : typeof err === 'string'
           ? err
           : 'Unknown printer error'
+      notifyPrinterActivity({ state: 'error', message })
+      requestPrinterStatusRefresh()
       toast.error(`Printer error: ${message}`)
     } finally {
       setPrinting(false)

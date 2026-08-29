@@ -16,6 +16,11 @@ import {
   PRINTER_SETTINGS_CHANGED_EVENT,
   type PrinterSettings,
 } from '@/lib/printer-settings'
+import {
+  PRINTER_ACTIVITY_EVENT,
+  PRINTER_STATUS_REFRESH_EVENT,
+  type PrinterActivityDetail,
+} from '@/lib/printer-status-events'
 
 export interface PrinterInfo {
   name: string
@@ -29,13 +34,17 @@ export interface PrinterStatus {
   configured: boolean
   /** Whether the saved USB printer is currently visible to the system. */
   online: boolean
+  /** UI-facing status derived from configuration, polling, and print activity. */
+  state: 'not_configured' | 'checking' | 'available' | 'unavailable' | 'printing' | 'error'
+  /** Last printer error reported by the print command. */
+  error: string | null
   /** All printers currently reported by the plugin. */
   printers: PrinterInfo[]
   /** True while the first load is in progress. */
   loading: boolean
 }
 
-const POLL_INTERVAL_MS = 10_000
+const POLL_INTERVAL_MS = 20_000
 const OFFLINE_STATUSES = new Set([
   'offline',
   'error',
@@ -74,11 +83,13 @@ export function usePrinterStatus(): PrinterStatus {
   const [loading, setLoading] = React.useState(true)
   const [isTauri, setIsTauri] = React.useState(false)
   const [settings, setSettings] = React.useState<PrinterSettings>(() => getPrinterSettings())
+  const [activity, setActivity] = React.useState<PrinterActivityDetail>({ state: 'idle' })
 
   // Detect Tauri once on mount (avoids SSR mismatch).
   React.useEffect(() => {
     function refreshSettings() {
       setSettings(getPrinterSettings())
+      setActivity({ state: 'idle' })
     }
 
     window.addEventListener(PRINTER_SETTINGS_CHANGED_EVENT, refreshSettings)
@@ -87,6 +98,17 @@ export function usePrinterStatus(): PrinterStatus {
       window.removeEventListener(PRINTER_SETTINGS_CHANGED_EVENT, refreshSettings)
       window.removeEventListener('storage', refreshSettings)
     }
+  }, [])
+
+  React.useEffect(() => {
+    function handleActivity(event: Event) {
+      const detail = (event as CustomEvent<PrinterActivityDetail>).detail
+      if (!detail) return
+      setActivity(detail)
+    }
+
+    window.addEventListener(PRINTER_ACTIVITY_EVENT, handleActivity)
+    return () => window.removeEventListener(PRINTER_ACTIVITY_EVENT, handleActivity)
   }, [])
 
   React.useEffect(() => {
@@ -100,6 +122,7 @@ export function usePrinterStatus(): PrinterStatus {
     }
 
     let cancelled = false
+    setLoading(true)
 
     async function poll() {
       const result = await fetchPrinters()
@@ -109,12 +132,18 @@ export function usePrinterStatus(): PrinterStatus {
       }
     }
 
+    function refreshNow() {
+      void poll()
+    }
+
     poll()
     const timer = setInterval(poll, POLL_INTERVAL_MS)
+    window.addEventListener(PRINTER_STATUS_REFRESH_EVENT, refreshNow)
 
     return () => {
       cancelled = true
       clearInterval(timer)
+      window.removeEventListener(PRINTER_STATUS_REFRESH_EVENT, refreshNow)
     }
   }, [isTauri])
 
@@ -141,5 +170,18 @@ export function usePrinterStatus(): PrinterStatus {
     return matches && !OFFLINE_STATUSES.has(status)
   })
 
-  return { configured, online, printers, loading }
+  const state: PrinterStatus['state'] =
+    activity.state === 'printing'
+      ? 'printing'
+      : activity.state === 'error'
+      ? 'error'
+      : !configured
+      ? 'not_configured'
+      : loading
+      ? 'checking'
+      : online
+      ? 'available'
+      : 'unavailable'
+
+  return { configured, online, state, error: activity.message ?? null, printers, loading }
 }
