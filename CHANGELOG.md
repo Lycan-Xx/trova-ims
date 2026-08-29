@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.3.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.3.0...v1.3.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **desktop:** polish diagnostics display and export dialogs ([3e7af2c](https://github.com/Lycan-Xx/trova-ims/commit/3e7af2c54465e85390e3e53f5246c85d29426517))
+* **receipts:** stabilize thermal width and currency output ([13fb1d0](https://github.com/Lycan-Xx/trova-ims/commit/13fb1d08d9745554ec3f488bacc80bf69227fb49))
+
 ## [1.3.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.2.5...v1.3.0) (2026-08-29)
 
 
