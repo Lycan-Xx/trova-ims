@@ -29,9 +29,9 @@ const styles = StyleSheet.create({
     fontSize: 7.5,
     color: '#111111',
     paddingTop: 12,
-    paddingRight: 11,
+    paddingRight: 14,
     paddingBottom: 14,
-    paddingLeft: 11,
+    paddingLeft: 14,
     backgroundColor: '#ffffff',
   },
   // Header
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   storeInfo: {
     fontSize: 6.8,
     textAlign: 'center',
-    color: '#555555',
+    color: '#333333',
     marginBottom: 2,
   },
   // Divider
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   metaLabel: {
-    color: '#555555',
+    color: '#333333',
   },
   metaValue: {
     fontFamily: RECEIPT_FONT,
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     fontFamily: RECEIPT_FONT,
     fontSize: 7.5,
     textAlign: 'center',
-    color: '#333333',
+    color: '#222222',
     marginBottom: 4,
   },
   // Items table
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     fontFamily: RECEIPT_FONT,
     fontWeight: 700,
     fontSize: 7,
-    color: '#333333',
+    color: '#222222',
   },
   itemBlock: {
     paddingVertical: 4,
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   },
   itemQtyPrice: {
     fontSize: 7,
-    color: '#555555',
+    color: '#333333',
   },
   itemAmount: {
     fontSize: 7.2,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   totalLabel: {
-    color: '#555555',
+    color: '#333333',
   },
   totalValue: {
     fontFamily: RECEIPT_FONT,
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 16,
     textAlign: 'center',
-    color: '#777777',
+    color: '#444444',
     fontSize: 6.8,
   },
   paymentBadge: {
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     alignSelf: 'flex-start',
     fontSize: 7,
-    color: '#444444',
+    color: '#222222',
   },
 })
 

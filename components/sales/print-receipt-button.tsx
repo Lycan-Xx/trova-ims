@@ -18,7 +18,7 @@ import { useCurrency } from '@/lib/currency-context'
 type PrintJobRequest = {
   printer: string
   paper_size: 'Mm58' | 'Mm80'
-  options: { code_page: number }
+  options: { code_page: number; encode: string; use_gbk: boolean }
   sections: unknown[]
 }
 
@@ -64,7 +64,7 @@ export function PrintReceiptButton({
     setPrinting(true)
     notifyPrinterActivity({ state: 'printing' })
     try {
-      const currencySymbol =
+      const fallbackCurrencySymbol =
         currency === 'NGN'
           ? '₦'
           : currency === 'USD'
@@ -74,6 +74,8 @@ export function PrintReceiptButton({
           : currency === 'EUR'
           ? '€'
           : currency
+
+      const currencySymbol = getCurrencySymbol(currency) || fallbackCurrencySymbol
 
       const sections = buildEscPosReceipt(sale, {
         storeName,
@@ -98,7 +100,8 @@ export function PrintReceiptButton({
       const printJobRequest: PrintJobRequest = {
         printer,
         paper_size: settings.paperWidth === 58 ? 'Mm58' : 'Mm80',
-        options: { code_page: 0 },
+        // Preserve Unicode before the printer applies its ESC/POS code page.
+        options: { code_page: 0, encode: 'UTF_8', use_gbk: false },
         sections,
       }
 

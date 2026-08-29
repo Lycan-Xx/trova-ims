@@ -123,7 +123,16 @@ export default async function SettingsPage() {
             <p>Version {process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version}</p>
           </div>
           <p>
-            Built by <span style={{ color: 'var(--text-primary)' }}>LycanForge</span>
+            Built by{' '}
+            <a
+              href="https://lycanforge.com.ng"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold hover:underline"
+              style={{ color: '#f59e0b' }}
+            >
+              LycanForge
+            </a>
           </p>
           <div>
             <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Support</p>
