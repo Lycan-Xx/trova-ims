@@ -2,7 +2,7 @@
  * ESC/POS receipt builder for tauri-plugin-thermal-printer.
  *
  * Produces the `sections` array consumed by `printThermalPrinter()`.
- * Pure function — no Tauri imports, safe to import in any environment.
+ * The raster builder uses the browser canvas when a receipt is printed.
  *
  * Paper widths:
  *   80 mm  ->  48 printable characters per line
@@ -41,9 +41,39 @@ interface TextStyles {
 type PrintSection =
   | { Text: { text: string; styles?: TextStyles } }
   | { Line: { character: string } }
+  | {
+      Image: {
+        data: string
+        max_width: number
+        align: Align
+        dithering: boolean
+        size: 'normal'
+      }
+    }
   | { Cut: { mode?: 'full' | 'partial'; feed?: number } }
 
 export type EscPosReceipt = PrintSection[]
+
+type RasterCommand =
+  | {
+      kind: 'text'
+      text: string
+      align: Align
+      fontSize: number
+      bold: boolean
+      lineHeight: number
+    }
+  | {
+      kind: 'row'
+      left: string
+      right: string
+      fontSize: number
+      bold: boolean
+      lineHeight: number
+    }
+  | { kind: 'rule'; lineHeight: number }
+
+const RASTER_WIDTH: Record<PaperWidth, number> = { 80: 576, 58: 384 }
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +144,195 @@ function wrapWords(value: string, chars: number): string[] {
 
   if (current) lines.push(current)
   return lines
+}
+
+function canvasFont(fontSize: number, bold: boolean): string {
+  return `${bold ? 700 : 600} ${fontSize}px Inter, "Segoe UI", Arial, sans-serif`
+}
+
+function wrapPixels(
+  context: CanvasRenderingContext2D,
+  value: string,
+  maxWidth: number,
+  fontSize: number,
+  bold: boolean,
+): string[] {
+  context.font = canvasFont(fontSize, bold)
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return ['']
+
+  const lines: string[] = []
+  let current = ''
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word
+    if (context.measureText(candidate).width <= maxWidth) {
+      current = candidate
+      continue
+    }
+
+    if (current) lines.push(current)
+    current = word
+
+    if (context.measureText(current).width > maxWidth) {
+      let segment = ''
+      for (const character of current) {
+        if (context.measureText(segment + character).width > maxWidth && segment) {
+          lines.push(segment)
+          segment = character
+        } else {
+          segment += character
+        }
+      }
+      current = segment
+    }
+  }
+
+  if (current) lines.push(current)
+  return lines
+}
+
+/**
+ * Rasterize the complete receipt before sending it to ESC/POS. Standard
+ * printer code pages do not contain the naira symbol, while an image preserves
+ * both the glyph and exact column positions on every supported printer.
+ */
+export function buildRasterEscPosReceipt(
+  sale: SaleDetail,
+  opts: EscPosOptions,
+): EscPosReceipt {
+  if (typeof document === 'undefined') {
+    throw new Error('Thermal receipt rendering requires the desktop window.')
+  }
+
+  const paperWidth = opts.paperWidth ?? 80
+  const width = RASTER_WIDTH[paperWidth]
+  const margin = paperWidth === 58 ? 14 : 20
+  const contentWidth = width - margin * 2
+  const bodySize = paperWidth === 58 ? 20 : 22
+  const scratch = document.createElement('canvas')
+  const scratchContext = scratch.getContext('2d')
+  if (!scratchContext) throw new Error('Could not initialize the receipt renderer.')
+
+  const commands: RasterCommand[] = []
+  const pushWrappedText = (
+    value: string,
+    align: Align = 'left',
+    fontSize = bodySize,
+    bold = false,
+  ) => {
+    const lineHeight = fontSize + 7
+    for (const line of wrapPixels(scratchContext, value, contentWidth, fontSize, bold)) {
+      commands.push({ kind: 'text', text: line, align, fontSize, bold, lineHeight })
+    }
+  }
+  const pushRule = () => commands.push({ kind: 'rule', lineHeight: 15 })
+  const pushRightValue = (right: string, bold = false, fontSize = bodySize) => {
+    let fittedSize = fontSize
+    while (fittedSize > 12) {
+      scratchContext.font = canvasFont(fittedSize, bold)
+      if (scratchContext.measureText(right).width <= contentWidth) break
+      fittedSize -= 1
+    }
+    commands.push({ kind: 'row', left: '', right, fontSize: fittedSize, bold, lineHeight: fittedSize + 8 })
+  }
+  const pushResponsiveRow = (left: string, right: string, bold = false, fontSize = bodySize) => {
+    scratchContext.font = canvasFont(fontSize, bold)
+    const rowWidth = scratchContext.measureText(left).width + 14 + scratchContext.measureText(right).width
+    if (rowWidth <= contentWidth) {
+      commands.push({ kind: 'row', left, right, fontSize, bold, lineHeight: fontSize + 8 })
+      return
+    }
+
+    pushWrappedText(left, 'left', fontSize, bold)
+    pushRightValue(right, bold, fontSize)
+  }
+
+  if (opts.storeName) pushWrappedText(opts.storeName, 'center', paperWidth === 58 ? 24 : 27, true)
+  if (opts.storeAddress) pushWrappedText(opts.storeAddress, 'center')
+  if (opts.storePhone) pushWrappedText(opts.storePhone, 'center')
+
+  pushRule()
+  pushWrappedText('RECEIPT', 'center', paperWidth === 58 ? 23 : 26, true)
+  pushRule()
+  pushWrappedText(sale.receipt_number)
+  pushWrappedText(fmtDate(sale.created_at))
+  if (sale.cashier_name) pushWrappedText(`Cashier: ${sale.cashier_name}`)
+
+  pushRule()
+  pushWrappedText('Items', 'left', bodySize + 1, true)
+  pushRule()
+
+  for (const item of sale.items) {
+    const amount = fmt(item.lineTotal, opts.currencySymbol)
+    const itemLabel = `(${item.qtySold}) ${item.productName}`
+    pushResponsiveRow(itemLabel, amount)
+  }
+
+  pushRule()
+  if (sale.items.length > 1) {
+    const subtotal = sale.items.reduce((sum, item) => sum + parseFloat(item.lineTotal), 0)
+    pushResponsiveRow('Subtotal:', fmt(subtotal, opts.currencySymbol))
+  }
+  pushResponsiveRow('TOTAL:', fmt(sale.total_amount, opts.currencySymbol), true, bodySize + 2)
+
+  pushRule()
+  const paymentLabel = PAYMENT_LABEL[sale.payment_method] ?? sale.payment_method
+  pushResponsiveRow('Payment:', paymentLabel)
+  if (sale.amount_paid) pushResponsiveRow('Amount Paid:', fmt(sale.amount_paid, opts.currencySymbol))
+  if (sale.change_given !== null && parseFloat(sale.change_given) > 0) {
+    pushResponsiveRow('Change:', fmt(sale.change_given, opts.currencySymbol))
+  }
+
+  pushRule()
+  pushWrappedText('Thank you for your purchase!', 'center')
+  pushWrappedText('Powered by Trova IMS', 'center')
+
+  const height = margin * 2 + commands.reduce((sum, command) => sum + command.lineHeight, 0)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Could not initialize the receipt renderer.')
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+  context.fillStyle = '#000000'
+  context.strokeStyle = '#000000'
+  context.lineWidth = 2
+  context.textBaseline = 'top'
+
+  let y = margin
+  for (const command of commands) {
+    if (command.kind === 'rule') {
+      const ruleY = y + Math.floor(command.lineHeight / 2)
+      context.beginPath()
+      context.moveTo(margin, ruleY)
+      context.lineTo(width - margin, ruleY)
+      context.stroke()
+      y += command.lineHeight
+      continue
+    }
+
+    context.font = canvasFont(command.fontSize, command.bold)
+    if (command.kind === 'row') {
+      context.textAlign = 'left'
+      context.fillText(command.left, margin, y)
+      context.textAlign = 'right'
+      context.fillText(command.right, width - margin, y)
+    } else {
+      context.textAlign = command.align
+      const x = command.align === 'center' ? width / 2 : command.align === 'right' ? width - margin : margin
+      context.fillText(command.text, x, y)
+    }
+    y += command.lineHeight
+  }
+
+  const data = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '')
+  return [
+    { Image: { data, max_width: width, align: 'center', dithering: false, size: 'normal' } },
+    { Cut: { mode: 'partial', feed: 3 } },
+  ]
 }
 
 /**

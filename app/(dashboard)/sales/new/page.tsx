@@ -11,7 +11,12 @@ import { getProducts, getProductByBarcode } from '@/app/actions/products'
 import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
 import { getStoreSettings } from '@/app/actions/settings'
 import type { ProductWithStock } from '@/app/actions/products'
-import { CUSTOMER_DISPLAY_EVENT, type CustomerDisplayCart } from '@/lib/customer-display'
+import {
+  clearCustomerDisplaySnapshot,
+  CUSTOMER_DISPLAY_EVENT,
+  saveCustomerDisplaySnapshot,
+  type CustomerDisplayCart,
+} from '@/lib/customer-display'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -65,6 +70,7 @@ export default function NewSalePage() {
 
   // Cart state
   const [cart, setCart] = React.useState<CartEntry[]>([])
+  const customerDisplayPayloadRef = React.useRef<CustomerDisplayCart | null>(null)
 
   // Effective per-unit prices, keyed by product id. This is the price that
   // will actually be charged (the next FEFO batch's override, if any) — it
@@ -230,8 +236,26 @@ export default function NewSalePage() {
       })),
       total: cartTotal,
     }
+    customerDisplayPayloadRef.current = payload
+    if (payload.items.length > 0) {
+      saveCustomerDisplaySnapshot(payload)
+    } else {
+      clearCustomerDisplaySnapshot()
+    }
     void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, payload))
   }, [cart, cartTotal, currency, effectivePrices, storeName])
+
+  React.useEffect(() => () => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    const payload = customerDisplayPayloadRef.current
+    clearCustomerDisplaySnapshot()
+    void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, {
+      storeName: payload?.storeName ?? 'Trova IMS',
+      currencySymbol: payload?.currencySymbol ?? getCurrencySymbol('NGN'),
+      items: [],
+      total: 0,
+    }))
+  }, [])
 
   const amountPaidNum = parseFloat(amountPaid) || 0
   const change = paymentMethod === 'cash' ? amountPaidNum - cartTotal : null

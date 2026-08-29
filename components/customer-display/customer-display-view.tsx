@@ -2,7 +2,11 @@
 
 import * as React from 'react'
 import { listen } from '@tauri-apps/api/event'
-import { CUSTOMER_DISPLAY_EVENT, type CustomerDisplayCart } from '@/lib/customer-display'
+import {
+  CUSTOMER_DISPLAY_EVENT,
+  getCustomerDisplaySnapshot,
+  type CustomerDisplayCart,
+} from '@/lib/customer-display'
 
 const EMPTY_CART: CustomerDisplayCart = { storeName: 'Trova IMS', currencySymbol: '\u20A6', items: [], total: 0 }
 
@@ -16,7 +20,11 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
   React.useEffect(() => {
     let unlisten: (() => void) | undefined
     void listen<CustomerDisplayCart>(CUSTOMER_DISPLAY_EVENT, (event) => setCart(event.payload))
-      .then((cleanup) => { unlisten = cleanup })
+      .then((cleanup) => {
+        unlisten = cleanup
+        const snapshot = getCustomerDisplaySnapshot()
+        if (snapshot) setCart(snapshot)
+      })
     return () => unlisten?.()
   }, [])
 

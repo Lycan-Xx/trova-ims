@@ -8,6 +8,12 @@
   },
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-position",
+    "core:window:allow-set-resizable",
+    "core:window:allow-set-size",
     "thermal-printer:allow-list-thermal-printers",
     "thermal-printer:allow-print-thermal-printer",
     "thermal-printer:allow-test-thermal-printer"

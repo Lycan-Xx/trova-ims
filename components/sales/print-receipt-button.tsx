@@ -12,7 +12,7 @@ import {
   notifyPrinterActivity,
   requestPrinterStatusRefresh,
 } from '@/lib/printer-status-events'
-import { buildEscPosReceipt } from '@/lib/receipt/escpos-renderer'
+import { buildRasterEscPosReceipt } from '@/lib/receipt/escpos-renderer'
 import { getCurrencySymbol } from '@/lib/currency'
 import { useCurrency } from '@/lib/currency-context'
 
@@ -65,24 +65,11 @@ export function PrintReceiptButton({
     setPrinting(true)
     notifyPrinterActivity({ state: 'printing' })
     try {
-      const fallbackCurrencySymbol =
-        currency === 'NGN'
-          ? '₦'
-          : currency === 'USD'
-          ? '$'
-          : currency === 'GBP'
-          ? '£'
-          : currency === 'EUR'
-          ? '€'
-          : currency
-
-      const currencySymbol = getCurrencySymbol(currency) || fallbackCurrencySymbol
-
-      const sections = buildEscPosReceipt(sale, {
+      const sections = buildRasterEscPosReceipt(sale, {
         storeName,
         storeAddress,
         storePhone,
-        currencySymbol,
+        currencySymbol: getCurrencySymbol(currency),
         paperWidth: settings.paperWidth,
       })
 
@@ -101,8 +88,8 @@ export function PrintReceiptButton({
       const printJobRequest: PrintJobRequest = {
         printer,
         paper_size: settings.paperWidth === 58 ? 'Mm58' : 'Mm80',
-        // Preserve Unicode before the printer applies its ESC/POS code page.
-        options: { code_page: 0, encode: 'UTF_8', use_gbk: false },
+        // Text is rasterized so unsupported printer code pages cannot corrupt it.
+        options: { code_page: 0, encode: 'WINDOWS_1252', use_gbk: false },
         sections,
       }
 

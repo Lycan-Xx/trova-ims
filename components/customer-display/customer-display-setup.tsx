@@ -47,33 +47,54 @@ export function CustomerDisplaySetup() {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
       const found = await availableMonitors()
       const monitor = found[settings.monitorIndex] ?? found[0]
-      if (!monitor || found.length < 2) {
-        toast.error('Connect a second display before opening Customer Display.')
+      if (!monitor) {
+        toast.error('No display is currently available.')
         return
       }
+      const singleDisplay = found.length === 1
 
       saveCustomerDisplaySettings({ enabled: true, monitorIndex: found.indexOf(monitor) })
       setSettings(getCustomerDisplaySettings())
 
-      const existing = await WebviewWindow.getByLabel('customer-display')
-      if (existing) {
-        await existing.setFocus()
-        return
+      let customerWindow = await WebviewWindow.getByLabel('customer-display')
+      if (!customerWindow) {
+        const createdWindow = new WebviewWindow('customer-display', {
+          title: 'Trova IMS Customer Display',
+          url: `${window.location.origin}/customer-display`,
+          decorations: singleDisplay,
+          resizable: singleDisplay,
+        })
+        customerWindow = createdWindow
+        await new Promise<void>((resolve, reject) => {
+          createdWindow.once('tauri://created', () => resolve())
+          createdWindow.once<unknown>('tauri://error', (event) => {
+            const detail =
+              typeof event.payload === 'string'
+                ? event.payload
+                : JSON.stringify(event.payload)
+            reject(new Error(`Customer Display could not be created${detail ? `: ${detail}` : '.'}`))
+          })
+        })
       }
 
-      const customerWindow = new WebviewWindow('customer-display', {
-        title: 'Trova IMS Customer Display',
-        url: `${window.location.origin}/customer-display`,
-        decorations: false,
-        resizable: false,
-      })
-      await new Promise<void>((resolve, reject) => {
-        customerWindow.once('tauri://created', () => resolve())
-        customerWindow.once('tauri://error', () => reject(new Error('Customer Display window could not be created.')))
-      })
       try {
-        await customerWindow.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y))
-        await customerWindow.setSize(new PhysicalSize(monitor.size.width, monitor.size.height))
+        const width = singleDisplay
+          ? Math.min(960, Math.floor(monitor.size.width * 0.84))
+          : monitor.size.width
+        const height = singleDisplay
+          ? Math.min(700, Math.floor(monitor.size.height * 0.82))
+          : monitor.size.height
+        const x = singleDisplay
+          ? monitor.position.x + Math.floor((monitor.size.width - width) / 2)
+          : monitor.position.x
+        const y = singleDisplay
+          ? monitor.position.y + Math.floor((monitor.size.height - height) / 2)
+          : monitor.position.y
+
+        await customerWindow.setDecorations(singleDisplay)
+        await customerWindow.setResizable(singleDisplay)
+        await customerWindow.setPosition(new PhysicalPosition(x, y))
+        await customerWindow.setSize(new PhysicalSize(width, height))
         await customerWindow.setFocus()
       } catch {
         toast.warning('Customer Display opened, but could not be positioned on the selected monitor.')
@@ -134,18 +155,18 @@ export function CustomerDisplaySetup() {
         <button
           type="button"
           onClick={() => void openDisplay()}
-          disabled={opening || !supported || monitors.length < 2}
+          disabled={opening || !supported || monitors.length === 0}
           className="inline-flex items-center justify-center gap-2 h-9 rounded-md px-3 text-sm font-medium w-fit"
-          style={{ background: 'var(--accent-primary)', color: '#fff', opacity: opening || !supported || monitors.length < 2 ? 0.55 : 1 }}
-          title={monitors.length < 2 ? 'Connect a second display first' : 'Open customer display'}
+          style={{ background: 'var(--accent-primary)', color: '#fff', opacity: opening || !supported || monitors.length === 0 ? 0.55 : 1 }}
+          title={monitors.length === 0 ? 'No display detected' : 'Open customer display'}
         >
           {opening ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
           Open Customer Display
         </button>
         {!supported ? (
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer Display is available in the desktop app.</p>
-        ) : monitors.length < 2 ? (
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>A second monitor is required.</p>
+        ) : monitors.length === 1 ? (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer Display will open in a separate window on this display.</p>
         ) : null}
       </div>
     </section>
