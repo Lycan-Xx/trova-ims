@@ -61,21 +61,23 @@ export function CustomerDisplaySetup() {
         return
       }
 
-      const window = new WebviewWindow('customer-display', {
+      const customerWindow = new WebviewWindow('customer-display', {
         title: 'Trova IMS Customer Display',
-        url: '/customer-display',
+        url: `${window.location.origin}/customer-display`,
         decorations: false,
         resizable: false,
       })
       await new Promise<void>((resolve, reject) => {
-        window.once('tauri://created', async () => {
-          await window.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y))
-          await window.setSize(new PhysicalSize(monitor.size.width, monitor.size.height))
-          await window.setFullscreen(true)
-          resolve()
-        })
-        window.once('tauri://error', () => reject(new Error('Customer Display window could not be created.')))
+        customerWindow.once('tauri://created', () => resolve())
+        customerWindow.once('tauri://error', () => reject(new Error('Customer Display window could not be created.')))
       })
+      try {
+        await customerWindow.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y))
+        await customerWindow.setSize(new PhysicalSize(monitor.size.width, monitor.size.height))
+        await customerWindow.setFocus()
+      } catch {
+        toast.warning('Customer Display opened, but could not be positioned on the selected monitor.')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not open Customer Display.')
     } finally {

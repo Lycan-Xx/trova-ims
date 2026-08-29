@@ -12,15 +12,19 @@ export function DevToolsShortcut() {
 
     async function handleKeyDown(event: KeyboardEvent) {
       if (!isTauriEnv()) return
-      if (!event.ctrlKey || !event.shiftKey || event.key !== DEVTOOLS_SHORTCUT) return
+      if (!event.ctrlKey || !event.shiftKey || (event.key !== DEVTOOLS_SHORTCUT && event.code !== DEVTOOLS_SHORTCUT)) return
 
       event.preventDefault()
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('open_main_devtools')
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('open_main_devtools')
+      } catch {
+        // Keep the technician shortcut silent for normal users when DevTools is unavailable.
+      }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [])
 
   return null

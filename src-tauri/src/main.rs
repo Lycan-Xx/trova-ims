@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 // Trova IMS desktop shell.
 //
 // Two run modes:
@@ -37,8 +39,12 @@ const STARTUP_ATTEMPTS: u16 = 200;
 const STARTUP_POLL_MS: u64 = 150;
 
 #[tauri::command]
-fn open_main_devtools(window: tauri::WebviewWindow) {
+fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window is not available.".to_string())?;
     window.open_devtools();
+    Ok(())
 }
 
 struct HealthStatus {
