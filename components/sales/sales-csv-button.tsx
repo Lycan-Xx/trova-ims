@@ -39,14 +39,10 @@ export function SalesCsvButton({
   paymentMethod,
 }: SalesCsvButtonProps) {
   const [exporting, setExporting] = React.useState(false)
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
 
   async function handleExport() {
     if (exporting) return
-
-    const confirmed = window.confirm(
-      'CSV export includes only sales still kept on this device. Older sales are automatically removed after about 30 days, so export regularly if you need long-term records.',
-    )
-    if (!confirmed) return
 
     setExporting(true)
     try {
@@ -94,9 +90,10 @@ export function SalesCsvButton({
   }
 
   return (
-    <button
+    <>
+      <button
       type="button"
-      onClick={handleExport}
+      onClick={() => setConfirmOpen(true)}
       disabled={exporting}
       className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-60"
       style={{
@@ -117,5 +114,43 @@ export function SalesCsvButton({
       {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
       Export CSV
     </button>
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0, 0, 0, 0.55)' }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sales-export-title"
+            className="w-full max-w-md rounded-xl p-6 shadow-2xl"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+          >
+            <h2 id="sales-export-title" className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Export retained sales?
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+              This export includes only sales still kept on this device. Older sales are automatically
+              removed after about 30 days, so export regularly if you need long-term records.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="h-9 rounded-md px-3 text-sm"
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmOpen(false); void handleExport() }}
+                className="h-9 rounded-md px-3 text-sm font-medium"
+                style={{ background: 'var(--accent-primary)', color: '#fff' }}
+              >
+                Export retained sales
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

@@ -19,6 +19,7 @@
         "minWidth": 1024,
         "minHeight": 640,
         "center": true,
+        "devtools": true,
         "visible": true
       }
     ],

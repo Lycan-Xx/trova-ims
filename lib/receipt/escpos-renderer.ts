@@ -76,8 +76,8 @@ function text(
   return { Text: { text: content, styles } }
 }
 
-function separator(symbol = '-'): PrintSection {
-  return { Line: { character: symbol } }
+function separator(symbol = '-', chars = 48): PrintSection {
+  return text(symbol.repeat(chars))
 }
 
 function fitLine(value: string, chars: number): string {
@@ -187,9 +187,9 @@ export function buildEscPosReceipt(
     sections.push(text(storePhone, { align: 'center' }))
   }
 
-  sections.push(separator('='))
+  sections.push(separator('=', chars))
   sections.push(text('RECEIPT', { bold: true, align: 'center' }))
-  sections.push(separator('='))
+  sections.push(separator('=', chars))
 
   // ── Meta ──────────────────────────────────────────────────────────
   sections.push(text(sale.receipt_number, { align: 'left' }))
@@ -198,11 +198,11 @@ export function buildEscPosReceipt(
     sections.push(text(`Cashier: ${sale.cashier_name}`, { align: 'left' }))
   }
 
-  sections.push(separator('-'))
+  sections.push(separator('-', chars))
 
   // ── Items ─────────────────────────────────────────────────────────
   sections.push(text('Items', { bold: true }))
-  sections.push(separator('-'))
+  sections.push(separator('-', chars))
 
   for (const item of sale.items) {
     const unitPrice = fmt(item.unitPrice, currencySymbol)
@@ -215,7 +215,7 @@ export function buildEscPosReceipt(
     sections.push(itemDetailRow(detail, lineTotal, chars))
   }
 
-  sections.push(separator('-'))
+  sections.push(separator('-', chars))
 
   // ── Subtotal (only if multiple items) ────────────────────────────
   if (sale.items.length > 1) {
@@ -233,7 +233,7 @@ export function buildEscPosReceipt(
     row('TOTAL:', fmt(sale.total_amount, currencySymbol), chars, true),
   )
 
-  sections.push(separator('='))
+  sections.push(separator('=', chars))
 
   // ── Payment details ───────────────────────────────────────────────
   const paymentLabel =
@@ -248,7 +248,7 @@ export function buildEscPosReceipt(
     sections.push(row('Change:', fmt(sale.change_given, currencySymbol), chars))
   }
 
-  sections.push(separator('='))
+  sections.push(separator('=', chars))
 
   // ── Footer ────────────────────────────────────────────────────────
   sections.push(text('Thank you for your purchase!', { align: 'center' }))
