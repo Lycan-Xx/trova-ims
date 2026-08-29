@@ -59,6 +59,13 @@ export interface SaleDetail extends SaleRow {
   items: SaleItemResult[]
 }
 
+export interface SalesSummary {
+  totalRevenue: number
+  transactionCount: number
+  avgTransactionValue: number
+  totalUnitsSold: number
+}
+
 // ── createSale ─────────────────────────────────────────────────────────────────
 
 export async function createSale(
@@ -294,7 +301,7 @@ export async function getSales(filters?: {
   paymentMethod?: string
   page?: number
 }): Promise<
-  | { success: true; data: { sales: SaleRow[]; totalCount: number; totalPages: number; currentPage: number } }
+  | { success: true; data: { sales: SaleRow[]; totalCount: number; totalPages: number; currentPage: number; summary: SalesSummary } }
   | { success: false; error: string }
 > {
   const user = await getCurrentUser()
@@ -324,13 +331,15 @@ export async function getSales(filters?: {
     }
 
     if (filters?.dateFrom) {
-      conditions.push(`s.created_at >= $${idx++}`)
+      conditions.push(`s.created_at >= $${idx}::date`)
       params.push(filters.dateFrom)
+      idx++
     }
 
     if (filters?.dateTo) {
-      conditions.push(`s.created_at <= $${idx++}`)
+      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
       params.push(filters.dateTo)
+      idx++
     }
 
     const where = conditions.join(' AND ')
@@ -341,6 +350,21 @@ export async function getSales(filters?: {
     )
     const totalCount: number = countRes.rows[0].total
     const totalPages = Math.max(1, Math.ceil(totalCount / limit))
+
+    const summaryRes = await query(
+      `SELECT
+         COALESCE(SUM(s.total_amount), 0)::float AS total_revenue,
+         COUNT(DISTINCT s.id)::int AS transaction_count,
+         COALESCE(SUM(si.qty_sold), 0)::int AS total_units_sold
+       FROM sales s
+       LEFT JOIN sale_items si ON si.sale_id = s.id
+       WHERE ${where}`,
+      params,
+    )
+    const summaryRow = summaryRes.rows[0]
+    const totalRevenue = parseFloat(String(summaryRow.total_revenue)) || 0
+    const transactionCount = parseInt(String(summaryRow.transaction_count), 10) || 0
+    const totalUnitsSold = parseInt(String(summaryRow.total_units_sold), 10) || 0
 
     const dataRes = await query(
       `SELECT
@@ -371,6 +395,12 @@ export async function getSales(filters?: {
         totalCount,
         totalPages,
         currentPage: page,
+        summary: {
+          totalRevenue,
+          transactionCount,
+          avgTransactionValue: transactionCount > 0 ? totalRevenue / transactionCount : 0,
+          totalUnitsSold,
+        },
       },
     }
   } catch (err) {

@@ -24,12 +24,16 @@ interface SalesListProps {
   currentPage: number
   isOwner: boolean
   cashiers: { id: string; name: string }[]
+  dateFrom?: string
+  dateTo?: string
   // Summary totals (owner only)
   summary?: {
     totalRevenue: number
     transactionCount: number
     avgTransactionValue: number
+    totalUnitsSold: number
   }
+  summaryLabel?: string
 }
 
 function formatDateTime(value: string): string {
@@ -40,6 +44,23 @@ function formatDateTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
+  })
+}
+
+function getDayKey(value: string): string {
+  const date = new Date(value)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatDayHeading(value: string): string {
+  return new Date(value).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
   })
 }
 
@@ -62,7 +83,10 @@ export function SalesList({
   currentPage,
   isOwner,
   cashiers,
+  dateFrom,
+  dateTo,
   summary,
+  summaryLabel = 'Selected Range',
 }: SalesListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -97,17 +121,29 @@ export function SalesList({
     '',
   ]
 
+  const visibleDayTotals = sales.reduce<Record<string, { count: number; revenue: number; firstDate: string }>>(
+    (acc, sale) => {
+      const key = getDayKey(sale.created_at)
+      const existing = acc[key] ?? { count: 0, revenue: 0, firstDate: sale.created_at }
+      existing.count += 1
+      existing.revenue += parseFloat(sale.total_amount)
+      acc[key] = existing
+      return acc
+    },
+    {},
+  )
+
   return (
     <div className="flex flex-col gap-4">
       {/* Owner summary strip */}
-      {isOwner && summary && totalCount > 0 && (
+      {isOwner && summary && (
         <div
-          className="grid grid-cols-3 gap-4 rounded-xl border p-4"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-4 rounded-xl border p-4"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              Total Revenue
+              {summaryLabel} Revenue
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--positive)' }}>
               {formatCurrency(summary.totalRevenue, currency)}
@@ -119,6 +155,14 @@ export function SalesList({
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               {summary.transactionCount.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              Items Sold
+            </span>
+            <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {summary.totalUnitsSold.toLocaleString()}
             </span>
           </div>
           <div className="flex flex-col gap-1">
@@ -137,7 +181,7 @@ export function SalesList({
         {/* Date from */}
         <input
           type="date"
-          defaultValue={searchParams.get('dateFrom') ?? ''}
+          defaultValue={dateFrom ?? ''}
           onChange={(e) => updateParam('dateFrom', e.target.value)}
           className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
           style={{
@@ -152,7 +196,7 @@ export function SalesList({
         {/* Date to */}
         <input
           type="date"
-          defaultValue={searchParams.get('dateTo') ?? ''}
+          defaultValue={dateTo ?? ''}
           onChange={(e) => updateParam('dateTo', e.target.value)}
           className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
           style={{
@@ -260,14 +304,34 @@ export function SalesList({
               </tr>
             </thead>
             <tbody>
-              {sales.map((sale) => (
-                <tr
-                  key={sale.id}
-                  className="border-t transition-colors"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
-                >
+              {sales.map((sale, index) => {
+                const dayKey = getDayKey(sale.created_at)
+                const previousDayKey = index > 0 ? getDayKey(sales[index - 1].created_at) : null
+                const showDayHeader = dayKey !== previousDayKey
+                const dayTotal = visibleDayTotals[dayKey]
+
+                return (
+                  <React.Fragment key={sale.id}>
+                    {showDayHeader && (
+                      <tr>
+                        <td colSpan={TABLE_COLS.length} className="px-4 py-2.5" style={{ background: 'var(--bg-nav)' }}>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                              {formatDayHeading(sale.created_at)}
+                            </span>
+                            <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+                              {dayTotal.count} {dayTotal.count === 1 ? 'transaction' : 'transactions'} - {formatCurrency(dayTotal.revenue, currency)}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    <tr
+                      className="border-t transition-colors"
+                      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
+                    >
                   {/* Receipt Number */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="mono text-[13px]" style={{ color: 'var(--text-muted)' }}>
@@ -322,8 +386,10 @@ export function SalesList({
                       View Receipt
                     </Link>
                   </td>
-                </tr>
-              ))}
+                    </tr>
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
