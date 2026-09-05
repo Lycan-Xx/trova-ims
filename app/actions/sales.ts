@@ -324,37 +324,45 @@ export async function getSales(filters?: {
   const offset = (page - 1) * limit
 
   try {
-    const conditions: string[] = ['s.store_id = $1']
+    // Condition fragments are built as functions of the alias so the same
+    // filters can be applied against `sales s` (for revenue/count) and
+    // `sales s2` (for the units-sold subquery) without duplicating logic.
+    type ConditionFn = (alias: string) => string
+    const conditionFns: ConditionFn[] = [(a) => `${a}.store_id = $1`]
     const params: unknown[] = [user.store_id]
     let idx = 2
 
     // Cashiers can only see their own sales
     if (user.role === 'cashier') {
-      conditions.push(`s.cashier_id = $${idx++}`)
+      const i = idx++
+      conditionFns.push((a) => `${a}.cashier_id = $${i}`)
       params.push(user.id)
     } else if (filters?.cashierId) {
-      conditions.push(`s.cashier_id = $${idx++}`)
+      const i = idx++
+      conditionFns.push((a) => `${a}.cashier_id = $${i}`)
       params.push(filters.cashierId)
     }
 
     if (filters?.paymentMethod) {
-      conditions.push(`s.payment_method = $${idx++}`)
+      const i = idx++
+      conditionFns.push((a) => `${a}.payment_method = $${i}`)
       params.push(filters.paymentMethod)
     }
 
     if (filters?.dateFrom) {
-      conditions.push(`s.created_at >= $${idx}::date`)
+      const i = idx++
+      conditionFns.push((a) => `${a}.created_at >= $${i}::date`)
       params.push(filters.dateFrom)
-      idx++
     }
 
     if (filters?.dateTo) {
-      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
+      const i = idx++
+      conditionFns.push((a) => `${a}.created_at < ($${i}::date + INTERVAL '1 day')`)
       params.push(filters.dateTo)
-      idx++
     }
 
-    const where = conditions.join(' AND ')
+    const buildWhere = (alias: string) => conditionFns.map((fn) => fn(alias)).join(' AND ')
+    const where = buildWhere('s')
 
     const countRes = await query(
       `SELECT COUNT(*)::int AS total FROM sales s WHERE ${where}`,
@@ -363,13 +371,21 @@ export async function getSales(filters?: {
     const totalCount: number = countRes.rows[0].total
     const totalPages = Math.max(1, Math.ceil(totalCount / limit))
 
+    // NOTE: total_revenue/transaction_count must come from `sales` alone. Joining
+    // sale_items fans out one row per line item, which multiplies total_amount
+    // (and, if not for the previous DISTINCT patch, COUNT) by basket size. Units
+    // sold is computed separately against sale_items so it isn't affected.
     const summaryRes = await query(
       `SELECT
          COALESCE(SUM(s.total_amount), 0)::float AS total_revenue,
-         COUNT(DISTINCT s.id)::int AS transaction_count,
-         COALESCE(SUM(si.qty_sold), 0)::int AS total_units_sold
+         COUNT(s.id)::int AS transaction_count,
+         COALESCE((
+           SELECT SUM(si.qty_sold)::int
+           FROM sale_items si
+           JOIN sales s2 ON s2.id = si.sale_id
+           WHERE ${buildWhere('s2')}
+         ), 0) AS total_units_sold
        FROM sales s
-       LEFT JOIN sale_items si ON si.sale_id = s.id
        WHERE ${where}`,
       params,
     )

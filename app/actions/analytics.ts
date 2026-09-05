@@ -38,13 +38,24 @@ export async function getSalesAnalytics(
 
   try {
     // Summary stats
+    // NOTE: total_revenue/total_transactions come from `sales` alone (one row per
+    // receipt). total_units_sold is computed separately from `sale_items`. These
+    // must NOT be combined via a single JOIN — sales LEFT JOIN sale_items fans out
+    // one row per line item, which silently multiplies total_amount/COUNT(s.id) by
+    // the number of items in each basket and inflates revenue.
     const summaryRes = await query(
       `SELECT
-         COALESCE(SUM(s.total_amount), 0)::float          AS total_revenue,
-         COUNT(s.id)::int                                  AS total_transactions,
-         COALESCE(SUM(si.qty_sold), 0)::int                AS total_units_sold
+         COALESCE(SUM(s.total_amount), 0)::float AS total_revenue,
+         COUNT(s.id)::int                        AS total_transactions,
+         COALESCE((
+           SELECT SUM(si.qty_sold)::int
+           FROM sale_items si
+           JOIN sales s2 ON s2.id = si.sale_id
+           WHERE s2.store_id = $1
+             AND s2.created_at::date >= $2::date
+             AND s2.created_at::date <= $3::date
+         ), 0) AS total_units_sold
        FROM sales s
-       LEFT JOIN sale_items si ON si.sale_id = s.id
        WHERE s.store_id = $1
          AND s.created_at::date >= $2::date
          AND s.created_at::date <= $3::date`,
