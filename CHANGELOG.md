@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.6.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.6.0...v1.6.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ci:** align Node runtime and lockfile ([f7fcc71](https://github.com/Lycan-Xx/trova-ims/commit/f7fcc7110b0ac6ef4c0b2567a029eececcd9ee25))
+
 ## [1.6.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.5.0...v1.6.0) (2026-09-06)
 
 
