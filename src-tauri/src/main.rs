@@ -58,31 +58,6 @@ fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-fn open_external_url(url: String) -> Result<(), String> {
-    let parsed = Url::parse(&url).map_err(|_| "The link is not a valid URL.".to_string())?;
-    let scheme = parsed.scheme().to_ascii_lowercase();
-    if !matches!(scheme.as_str(), "http" | "https" | "mailto") {
-        return Err("Only web and email links can be opened externally.".to_string());
-    }
-    if matches!(scheme.as_str(), "http" | "https") && parsed.host_str().is_none() {
-        return Err("The web link does not include a valid host.".to_string());
-    }
-
-    #[cfg(windows)]
-    let mut command = Command::new("explorer.exe");
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut command = Command::new("xdg-open");
-
-    command
-        .arg(&url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|err| format!("Could not open the default browser: {err}"))
-}
-
 struct HealthStatus {
     healthy: bool,
     status_line: String,
@@ -469,10 +444,11 @@ fn main() {
             }
         }));
         builder = builder.plugin(tauri_plugin_thermal_printer::init());
+        builder = builder.plugin(tauri_plugin_opener::init());
     }
 
     let app = builder
-        .invoke_handler(tauri::generate_handler![open_main_devtools, open_external_url])
+        .invoke_handler(tauri::generate_handler![open_main_devtools])
         .setup(|app| {
             if tauri::is_dev() {
                 return Ok(());

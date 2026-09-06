@@ -15,15 +15,15 @@ export function ExternalLink({ href, onClick, target = '_blank', rel = 'noopener
     onClick?.(event)
     if (event.defaultPrevented || !isTauriEnvironment()) return
 
-    // Let ordinary browser navigation handle unsupported schemes. The native
-    // command accepts only the URL schemes that are expected for support/legal
-    // links, which keeps arbitrary shell commands out of the desktop path.
+    // Let ordinary browser navigation handle unsupported schemes. The
+    // `opener:default` capability permission only allows http(s)/mailto/tel,
+    // which keeps arbitrary shell commands out of the desktop path.
     if (!/^(https?:|mailto:)/i.test(href)) return
 
     event.preventDefault()
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('open_external_url', { url: href })
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(href)
     } catch (error) {
       console.error('[ExternalLink] Could not open default browser:', error)
     }
