@@ -1,6 +1,29 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.6.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.5.0...v1.6.0) (2026-09-06)
+
+
+### Features
+
+* **analytics:** add beta disclaimer banner ([cd30dab](https://github.com/Lycan-Xx/trova-ims/commit/cd30dab2adeb099ecd328937cdf2020b19c35498))
+* **analytics:** add beta disclaimer banner ([671c743](https://github.com/Lycan-Xx/trova-ims/commit/671c743246c0021f4f6cd2b159d948e47c5342e1))
+* **desktop:** add Clear Test Data button ([6a164af](https://github.com/Lycan-Xx/trova-ims/commit/6a164af8bf112c2c535fb4876165f584ac71b04b))
+* **desktop:** add Test Mode with an isolated local database ([6a89314](https://github.com/Lycan-Xx/trova-ims/commit/6a89314057cf6a3e83e58cf40951799488559800))
+* **desktop:** add Test Mode with an isolated local database ([df28e31](https://github.com/Lycan-Xx/trova-ims/commit/df28e3121a0dac7fe4ac965e1f1e2ac03f61c26c))
+* **desktop:** rebrand splash screen with logo, tagline, and version ([7fc28b5](https://github.com/Lycan-Xx/trova-ims/commit/7fc28b5e7873d2cff36c456e55afa82119d91aa0))
+* **desktop:** rebrand splash screen with logo, tagline, and version ([ef3e28b](https://github.com/Lycan-Xx/trova-ims/commit/ef3e28b5481c4f1d571961947c1ff0b5b916680d))
+
+
+### Bug Fixes
+
+* **desktop:** stop orphaned customer-display window and flush sales export on close ([82104d8](https://github.com/Lycan-Xx/trova-ims/commit/82104d82ec3ca5a08ec140de87307ca9f2b94fa0))
+* **desktop:** stop orphaned customer-display window and flush sales export on close ([02bd257](https://github.com/Lycan-Xx/trova-ims/commit/02bd2574e3e3e9087fc9d44afc73c54a9dd8a8b4))
+* **desktop:** use tauri-plugin-opener instead of explorer.exe for external links ([d875c6b](https://github.com/Lycan-Xx/trova-ims/commit/d875c6ba1b27406ad8ba4bf3ee999ed75f5c2c61))
+* **desktop:** use tauri-plugin-opener instead of explorer.exe for external links ([f8c6cc7](https://github.com/Lycan-Xx/trova-ims/commit/f8c6cc78782ef65db97e7bbde81b6160700cd702))
+* **sales:** correct revenue/transaction fan-out from sale_items join ([d2833e7](https://github.com/Lycan-Xx/trova-ims/commit/d2833e7616753772ceb34861b4e2992aef2d8575))
+* **sales:** correct revenue/transaction fan-out from sale_items join ([cfac202](https://github.com/Lycan-Xx/trova-ims/commit/cfac202e9d8170922f74d39e738657e07d0a6ea6))
+
 ## [1.5.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.4.0...v1.5.0) (2026-08-29)
 
 
