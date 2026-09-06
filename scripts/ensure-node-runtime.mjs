@@ -5,9 +5,9 @@ import { Readable } from 'node:stream'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// Keep the runtime pinned so every release is reproducible. Node 20 is the
-// minimum major supported by the bundled Next.js 16 server.
-const NODE_VERSION = '20.19.5'
+// Keep the runtime pinned so every release is reproducible. Kysely 0.29
+// requires Node 22 or newer in the bundled Next.js 16 server.
+const NODE_VERSION = '22.12.0'
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const runtimeRoot = path.join(root, '.trova-runtime', 'node')
 

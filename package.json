@@ -2,6 +2,9 @@
   "name": "my-project",
   "version": "1.6.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:desktop": "node ./scripts/dev-desktop.js",

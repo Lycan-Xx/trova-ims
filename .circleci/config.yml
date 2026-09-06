@@ -146,7 +146,7 @@ jobs:
     steps:
       - checkout
       - node/install:
-          node-version: "20"
+          node-version: "22"
       - install-rust
       - install-linux-deps
       - install-node-deps
@@ -176,7 +176,7 @@ jobs:
       - run:
           name: Install Node.js
           command: |
-            choco install nodejs --version=20.11.1 -y
+            choco install nodejs --version=22.12.0 -y
             node --version
             npm --version
       - run:
