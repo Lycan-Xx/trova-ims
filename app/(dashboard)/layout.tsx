@@ -4,6 +4,8 @@ import { Topbar } from '@/components/layout/topbar'
 import { DevToolsShortcut } from '@/components/desktop/devtools-shortcut'
 import { CurrencyProvider } from '@/components/providers/currency-provider'
 import { getCurrentUser } from '@/lib/auth'
+import { IS_DESKTOP } from '@/lib/db'
+import { isTestModeEnabled } from '@/lib/db/test-mode'
 import { getStoreSettings } from '@/app/actions/settings'
 import { redirect } from 'next/navigation'
 
@@ -17,6 +19,7 @@ export default async function DashboardLayout({
 
   const storeResult = await getStoreSettings()
   const store = storeResult.success ? storeResult.data : null
+  const testModeEnabled = IS_DESKTOP && isTestModeEnabled()
 
   return (
     <CurrencyProvider store={store}>
@@ -31,7 +34,7 @@ export default async function DashboardLayout({
             overflow: 'hidden',
           }}
         >
-          <Sidebar userRole={user.role} />
+          <Sidebar userRole={user.role} testModeEnabled={testModeEnabled} />
           {/* Content area — sidebar is fixed-position so we pad-left to avoid overlap */}
           <div
             style={{

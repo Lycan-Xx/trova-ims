@@ -14,6 +14,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  FlaskConical,
 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { UserRole } from '@/lib/db/schema'
@@ -100,7 +101,7 @@ function NavItem({ href, icon: Icon, label, isActive, expanded, joyrideId }: Nav
   )
 }
 
-export function Sidebar({ userRole }: { userRole?: UserRole }) {
+export function Sidebar({ userRole, testModeEnabled }: { userRole?: UserRole; testModeEnabled?: boolean }) {
   const pathname = usePathname()
   const [expanded, setExpanded] = React.useState(true)
   const width = expanded ? EXPANDED_W : COLLAPSED_W
@@ -123,10 +124,11 @@ export function Sidebar({ userRole }: { userRole?: UserRole }) {
         height: '100vh',
         backgroundColor: 'var(--bg-nav)',
         borderRight: '1px solid var(--border-subtle)',
+        borderTop: testModeEnabled ? '3px solid var(--accent-yellow)' : undefined,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        paddingTop: 12,
+        paddingTop: testModeEnabled ? 9 : 12,
         paddingBottom: 16,
         paddingLeft: expanded ? 12 : 0,
         paddingRight: expanded ? 12 : 0,
@@ -139,6 +141,34 @@ export function Sidebar({ userRole }: { userRole?: UserRole }) {
         overflow: 'hidden',
       }}
     >
+      {/* Test Mode indicator — unmissable while enabled: colored top border on
+          the whole sidebar (visible even collapsed) plus a labeled banner. */}
+      {testModeEnabled && (
+        <div
+          title="Test Mode is on — sales and products go to a separate test database, not your real records."
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: expanded ? 'flex-start' : 'center',
+            gap: 6,
+            width: '100%',
+            marginBottom: 14,
+            padding: expanded ? '5px 8px' : '5px 0',
+            borderRadius: 6,
+            background: 'var(--accent-yellow)',
+            color: '#1a1400',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+          }}
+        >
+          <FlaskConical size={13} strokeWidth={2.25} style={{ flexShrink: 0 }} />
+          {expanded && <span>TEST MODE</span>}
+        </div>
+      )}
+
       {/* Logo mark */}
       <div
         style={{
