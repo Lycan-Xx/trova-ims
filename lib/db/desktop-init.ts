@@ -26,7 +26,7 @@ export const DESKTOP_LOCAL_USER_ID  = '00000000-0000-0000-0000-000000000002'
 // `npm run dev`, it falls back to `.trova-local/` in the project root so
 // nothing leaks into the real DB.
 
-function getDbPath(): string {
+export function getDbPath(): string {
   const base = process.env.TROVA_DATA_DIR ?? join(process.cwd(), '.trova-local')
   return join(base, 'trova.db')
 }

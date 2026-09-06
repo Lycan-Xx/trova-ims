@@ -246,6 +246,54 @@ export async function runDesktopSalesExportIfDue(
   }
 }
 
+export async function runDesktopSalesExportNow(
+  db: PGlite,
+  dataDirectory: string,
+  storeId: string,
+  now = new Date(),
+): Promise<ExportResult> {
+  const statePath = getStatePath(dataDirectory)
+  const state = await readExportState(statePath)
+  const lastExportEnd = state ? new Date(state.lastExportEndAt) : null
+
+  // Nothing to flush if we already exported up to (or past) now — avoids
+  // writing a near-empty file if this is called twice in quick succession
+  // (e.g. the main window and an unrelated shutdown path both firing).
+  if (lastExportEnd && now.getTime() - lastExportEnd.getTime() < 1000) {
+    return { success: true, due: false, nextDelayMs: DESKTOP_SALES_EXPORT_INTERVAL_MS }
+  }
+
+  try {
+    const storeResult = await db.query(
+      'SELECT name FROM stores WHERE id = $1 LIMIT 1',
+      [storeId],
+    )
+    const storeName = String((storeResult.rows[0] as { name?: string } | undefined)?.name ?? 'Store')
+
+    let start = lastExportEnd
+    if (!start) {
+      const oldestResult = await db.query(
+        'SELECT MIN(created_at) AS oldest_sale FROM sales WHERE store_id = $1',
+        [storeId],
+      )
+      const oldestValue = (oldestResult.rows[0] as { oldest_sale?: string | Date } | undefined)?.oldest_sale
+      const oldestSale = oldestValue ? new Date(oldestValue) : null
+      start = oldestSale && Number.isFinite(oldestSale.getTime()) ? oldestSale : now
+    }
+
+    // Flushing early "closes out" the current window early; the next
+    // scheduled weekly export simply resumes counting from `now`.
+    await writeSalesWindow(db, storeId, storeName, start, now)
+    await writeExportState(statePath, now)
+
+    return { success: true, due: true, nextDelayMs: DESKTOP_SALES_EXPORT_INTERVAL_MS }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[desktop-sales-export] Close-time export failed: ${message}`)
+    return { success: false, due: true, nextDelayMs: EXPORT_RETRY_INTERVAL_MS, error: message }
+  }
+}
+
 export function scheduleDesktopSalesExport(
   db: PGlite,
   dataDirectory: string,
