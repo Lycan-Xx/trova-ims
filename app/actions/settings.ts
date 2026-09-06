@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { query, IS_DESKTOP } from '@/lib/db'
 import { isTestModeEnabled, setTestModeEnabled } from '@/lib/db/test-mode'
+import { getDesktopTestDb } from '@/lib/db/desktop-init'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
 import type { Store, User, UserRole } from '@/lib/db/schema'
 
@@ -229,4 +230,31 @@ export async function setTestMode(
   revalidatePath('/', 'layout')
 
   return { success: true }
+}
+
+export async function clearTestData(): Promise<{ success: true } | { success: false; error: string }> {
+  if (!IS_DESKTOP) {
+    return { success: false, error: 'Test Mode is only available in the desktop app.' }
+  }
+  await requireOwner()
+
+  if (!isTestModeEnabled()) {
+    return { success: false, error: 'Turn Test Mode on before clearing test data.' }
+  }
+
+  try {
+    const db = await getDesktopTestDb()
+    // Deliberately excludes stores/users — those hold the schema-seeded
+    // identity the desktop auth bypass depends on. Everything else in the
+    // test database is fair game since none of it is real store data.
+    await db.exec(
+      `TRUNCATE sale_items, sales, batches, products, vendors, categories, invitations
+       RESTART IDENTITY CASCADE`,
+    )
+    revalidatePath('/', 'layout')
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to clear test data.'
+    return { success: false, error: message }
+  }
 }
