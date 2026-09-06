@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { TriangleAlert as AlertTriangle } from 'lucide-react'
 import { requireOwner } from '@/lib/auth'
 import { getSalesAnalytics, getVendorAnalytics, getExpiryRisk } from '@/app/actions/analytics'
 import { AnalyticsPanels } from '@/components/analytics/analytics-panels'
@@ -85,6 +86,23 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           dateFrom={dateFrom}
           dateTo={dateTo}
         />
+      </div>
+
+      {/* Beta disclaimer */}
+      <div
+        className="flex items-center gap-2.5 px-4 py-3 rounded-lg"
+        style={{
+          background: 'var(--warning-bg)',
+          border: '1px solid var(--warning)',
+        }}
+        role="alert"
+      >
+        <AlertTriangle size={16} style={{ color: 'var(--warning)', flexShrink: 0 }} />
+        <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
+          <strong style={{ color: 'var(--warning)' }}>Beta:</strong> Analytics uses your store&apos;s
+          real sales data, but this feature is still being refined and figures here may not always
+          be fully accurate. Treat them as a guide rather than a final record.
+        </p>
       </div>
 
       <AnalyticsPanels
