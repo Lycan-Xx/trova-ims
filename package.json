@@ -23,6 +23,7 @@
     "@electric-sql/pglite": "^0.5.5",
     "@react-pdf/renderer": "^4.5.1",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "@vercel/analytics": "1.6.1",
     "@vercel/functions": "^3.7.3",
     "better-auth": "^1.6.20",
