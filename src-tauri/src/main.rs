@@ -22,6 +22,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -307,6 +308,49 @@ fn local_server_request(path: &str) -> Result<HealthStatus, String> {
     })
 }
 
+/// Best-effort request asking the local server to flush any pending sales
+/// export immediately, used as part of the main-window close sequence so a
+/// backup exists even if the store closes the app between scheduled weekly
+/// exports. Never blocks shutdown on failure — errors are logged and
+/// swallowed, since a missed close-time export is not worth hanging the app
+/// on or losing the customer-display/server cleanup that follows it.
+fn trigger_export_now() {
+    let mut stream = match TcpStream::connect(("127.0.0.1", SERVER_PORT)) {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("[trova-ims] Skipping close-time export, could not reach local server: {err}");
+            return;
+        }
+    };
+    let timeout = Some(Duration::from_secs(5));
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+
+    let request = format!(
+        "POST /api/desktop/export-now HTTP/1.1\r\n\
+         Host: 127.0.0.1:{SERVER_PORT}\r\n\
+         Content-Length: 0\r\n\
+         Connection: close\r\n\r\n"
+    );
+    if let Err(err) = stream.write_all(request.as_bytes()) {
+        eprintln!("[trova-ims] Close-time export request failed to send: {err}");
+        return;
+    }
+
+    let mut response = Vec::new();
+    if let Err(err) = stream.read_to_end(&mut response) {
+        eprintln!("[trova-ims] Close-time export response failed to read: {err}");
+        return;
+    }
+
+    let status_line = String::from_utf8_lossy(&response)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    eprintln!("[trova-ims] Close-time export request completed: {status_line}");
+}
+
 fn show_startup_error(handle: &tauri::AppHandle, message: &str, log_path: &Path) {
     let message = serde_json::to_string(message)
         .unwrap_or_else(|_| "\"Trova IMS could not start.\"".to_string());
@@ -450,6 +494,37 @@ fn main() {
     let app = builder
         .invoke_handler(tauri::generate_handler![open_main_devtools])
         .setup(|app| {
+            // Registered unconditionally (dev and packaged builds alike) since
+            // the customer-display window is a frontend feature independent of
+            // is_dev(). Without this, closing "main" while "customer-display"
+            // is still open does not exit the app at all — Tauri only fires
+            // app-exit once *every* window has closed — leaving the display
+            // window and the local server running headless, which is what
+            // then triggers the force-kill-and-relaunch crash reported above.
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                let closing = AtomicBool::new(false);
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if closing.swap(true, Ordering::SeqCst) {
+                            // Cleanup already in flight from a previous close
+                            // request; let this one proceed normally instead
+                            // of stacking another teardown on top of it.
+                            return;
+                        }
+                        api.prevent_close();
+                        let handle = handle.clone();
+                        thread::spawn(move || {
+                            trigger_export_now();
+                            if let Some(display) = handle.get_webview_window("customer-display") {
+                                let _ = display.close();
+                            }
+                            handle.exit(0);
+                        });
+                    }
+                });
+            }
+
             if tauri::is_dev() {
                 return Ok(());
             }
