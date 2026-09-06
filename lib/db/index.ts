@@ -4,7 +4,8 @@
 // desktop module graph entirely.
 import type { Pool as PgPool, ClientBase } from 'pg'
 import * as schema from './schema'
-import { desktopQuery } from './desktop-init'
+import { desktopQuery, desktopTestQuery } from './desktop-init'
+import { isTestModeEnabled } from './test-mode'
 
 // ── Desktop mode ──────────────────────────────────────────────────────────────
 // When DESKTOP_MODE=true the Tauri shell sets this env var before starting
@@ -96,7 +97,7 @@ export const db = IS_DESKTOP
 /** Single-statement queries */
 export async function query(text: string, params?: unknown[]) {
   if (IS_DESKTOP) {
-    return desktopQuery(text, params)
+    return isTestModeEnabled() ? desktopTestQuery(text, params) : desktopQuery(text, params)
   }
   try {
     return await pool.query(text, params)
@@ -124,18 +125,20 @@ export async function query(text: string, params?: unknown[]) {
  *
  * Desktop (PGlite): wraps fn() in a PGlite transaction. PGlite doesn't
  * expose a pg-compatible Client object, so we shim one — the callback
- * receives an object whose .query() method delegates to desktopQuery(),
- * which runs against the same singleton PGlite database. BEGIN/COMMIT/
- * ROLLBACK issued by the callback are executed as ordinary queries, which
- * PGlite handles correctly in its single-connection, synchronous model.
+ * receives an object whose .query() method delegates to desktopQuery() (or
+ * desktopTestQuery() when Test Mode is on), which runs against the same
+ * singleton PGlite database. BEGIN/COMMIT/ROLLBACK issued by the callback
+ * are executed as ordinary queries, which PGlite handles correctly in its
+ * single-connection, synchronous model.
  */
 export async function withConnection<T>(
   fn: (client: ClientBase) => Promise<T>,
 ): Promise<T> {
   if (IS_DESKTOP) {
+    const activeQuery = isTestModeEnabled() ? desktopTestQuery : desktopQuery
     const shimClient = {
       async query(text: string, params?: unknown[]) {
-        return desktopQuery(text, params)
+        return activeQuery(text, params)
       },
     } as unknown as ClientBase
     return fn(shimClient)

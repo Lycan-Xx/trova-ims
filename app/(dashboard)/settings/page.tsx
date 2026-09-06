@@ -1,11 +1,13 @@
 import { redirect } from 'next/navigation'
 import { requireOwner } from '@/lib/auth'
+import { IS_DESKTOP } from '@/lib/db'
 import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
 import { PrinterSetup } from '@/components/settings/printer-setup'
 import { CustomerDisplaySetup } from '@/components/customer-display/customer-display-setup'
+import { TestModeToggle } from '@/components/settings/test-mode-toggle'
 import { ExternalLink } from '@/components/ui/external-link'
 import packageJson from '@/package.json'
 
@@ -91,6 +93,19 @@ export default async function SettingsPage() {
             </div>
             <RestartTutorialButton />
           </div>
+        </section>
+      )}
+
+      {/* Section D — Test Mode (desktop only) */}
+      {isOwner && IS_DESKTOP && (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--accent-yellow)',
+          }}
+        >
+          <TestModeToggle />
         </section>
       )}
 

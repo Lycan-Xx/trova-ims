@@ -467,6 +467,7 @@ fn kill_server(app: &tauri::AppHandle) {
     if killed_server {
         if let Ok(data_dir) = app.path().app_data_dir() {
             let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+            let _ = std::fs::remove_file(data_dir.join("trova-test.db.lock"));
         }
     }
 }
@@ -546,6 +547,7 @@ fn main() {
             // succeeded, so a missing diagnostic tool cannot remove a live lock.
             if terminate_orphaned_server() {
                 let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+                let _ = std::fs::remove_file(data_dir.join("trova-test.db.lock"));
             }
 
             let log_path = data_dir.join("server.log");
