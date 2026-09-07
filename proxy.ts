@@ -15,13 +15,7 @@ const PUBLIC_PREFIXES = [
   '/demo',
 ]
 
-export function middleware(request: NextRequest) {
-  // In DESKTOP_MODE there's no session cookie — the app is single-user
-  // with no sign-in. Make server-side routing authoritative: when the
-  // app is running in desktop mode, redirect the root path to /dashboard
-  // and skip auth gating for all other routes.
-  // Use runtime env check instead of IS_DESKTOP constant to avoid
-  // importing lib/db which contains Node.js APIs incompatible with Edge Runtime.
+export function proxy(request: NextRequest) {
   if (process.env.DESKTOP_MODE === 'true') {
     const { pathname } = request.nextUrl
     if (
@@ -32,20 +26,16 @@ export function middleware(request: NextRequest) {
       pathname === '/landing' ||
       pathname === '/privacy'
     ) {
-      const dashboardUrl = new URL('/dashboard', request.url)
-      return NextResponse.redirect(dashboardUrl)
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
     return NextResponse.next()
   }
 
   const { pathname } = request.nextUrl
-
-  // Always allow public paths and root
-  if (pathname === '/' || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (pathname === '/' || PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next()
   }
 
-  // Check for a Better Auth session cookie (plain or Secure-prefixed)
   const sessionCookie =
     request.cookies.get('better-auth.session_token') ??
     request.cookies.get('__Secure-better-auth.session_token')
