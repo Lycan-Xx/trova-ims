@@ -1,0 +1,53 @@
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { createDemoData } from '@/lib/demo/create-demo-data'
+import { isDemoView } from '@/lib/demo/capabilities'
+import type { DemoData } from '@/lib/demo/types'
+import { DemoShell } from './demo-shell'
+import { DemoReadOnlyDialog } from './demo-read-only-dialog'
+import { DemoPageHeader } from './demo-ui'
+
+export function DemoApp() {
+  const searchParams = useSearchParams()
+  const requestedView = searchParams.get('view')
+  const activeView = isDemoView(requestedView) ? requestedView : 'dashboard'
+  const [data, setData] = useState<DemoData | null>(null)
+  const [unavailableAction, setUnavailableAction] = useState<string | null>(null)
+
+  useEffect(() => setData(createDemoData()), [])
+
+  const reset = useCallback(() => {
+    setData(createDemoData())
+    setUnavailableAction(null)
+  }, [])
+
+  if (!data) return <DemoLoading />
+
+  return (
+    <DemoShell activeView={activeView} onReset={reset}>
+      <DemoPageHeader
+        eyebrow="Trova interactive preview"
+        title={activeView.charAt(0).toUpperCase() + activeView.slice(1)}
+        description="This section is being prepared with fictional sample data. Use the navigation to explore the public preview."
+        action={<button type="button" onClick={() => setUnavailableAction('Manage your store')} className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white">Try an action</button>}
+      />
+      <div className="rounded-xl border border-dashed border-border bg-bg-card p-12 text-center text-sm text-text-muted">Preview section ready for content.</div>
+      <DemoReadOnlyDialog action={unavailableAction} onClose={() => setUnavailableAction(null)} />
+    </DemoShell>
+  )
+}
+
+export function DemoLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-bg-base px-6 text-center">
+      <div>
+        <span className="mx-auto mb-4 block size-9 animate-pulse rounded-xl bg-accent-primary" />
+        <p className="text-sm font-semibold text-white">Preparing the Trova preview…</p>
+        <p className="mt-2 text-xs text-text-muted">Loading fictional sample data locally.</p>
+      </div>
+    </div>
+  )
+}
+

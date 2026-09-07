@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   '/api/webhooks',
   '/privacy',
   '/landing',
+  '/demo',
 ]
 
 export function middleware(request: NextRequest) {
