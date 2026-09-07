@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.7.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.6.1...v1.7.0) (2026-09-07)
+
+
+### Features
+
+* **sales:** harden checkout and receipt management ([2304f9e](https://github.com/Lycan-Xx/trova-ims/commit/2304f9e81063dd7ae3f105af3c2440627d867df4))
+
 ## [1.6.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.6.0...v1.6.1) (2026-09-06)
 
 
