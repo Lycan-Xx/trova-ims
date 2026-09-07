@@ -9,6 +9,7 @@ import { DemoShell } from './demo-shell'
 import { DemoReadOnlyDialog } from './demo-read-only-dialog'
 import { DemoPageHeader } from './demo-ui'
 import { AnalyticsPreview, DashboardPreview, ProductsPreview, SalesPreview } from './primary-sections'
+import { AlertsPreview, IntakePreview, SettingsPreview, VendorsPreview } from './inventory-sections'
 
 export function DemoApp() {
   const searchParams = useSearchParams()
@@ -39,16 +40,25 @@ export function DemoApp() {
         : activeView === 'analytics'
           ? <AnalyticsPreview data={data} />
           : null
+  const secondarySection = activeView === 'vendors'
+    ? <VendorsPreview data={data} onAction={setUnavailableAction} />
+    : activeView === 'intake'
+      ? <IntakePreview data={data} onAction={setUnavailableAction} />
+      : activeView === 'alerts'
+        ? <AlertsPreview data={data} onAction={setUnavailableAction} />
+        : activeView === 'settings'
+          ? <SettingsPreview data={data} onAction={setUnavailableAction} />
+          : null
 
   return (
     <DemoShell activeView={activeView} onReset={reset}>
-      {primarySection ?? <DemoPageHeader
+      {primarySection ?? secondarySection ?? <DemoPageHeader
         eyebrow="Trova interactive preview"
         title={activeView.charAt(0).toUpperCase() + activeView.slice(1)}
         description="This section is being prepared with fictional sample data. Use the navigation to explore the public preview."
         action={<button type="button" onClick={() => setUnavailableAction('Manage your store')} className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-semibold text-white">Try an action</button>}
       />}
-      {!primarySection && <div className="rounded-xl border border-dashed border-border bg-bg-card p-12 text-center text-sm text-text-muted">Preview section ready for content.</div>}
+      {!primarySection && !secondarySection && <div className="rounded-xl border border-dashed border-border bg-bg-card p-12 text-center text-sm text-text-muted">Preview section ready for content.</div>}
       <DemoReadOnlyDialog action={unavailableAction} onClose={() => setUnavailableAction(null)} />
     </DemoShell>
   )
