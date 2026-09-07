@@ -2,7 +2,8 @@
 --
 -- This is a consolidated, single-file version of all migrations
 -- (000 through 006). It is idempotent — safe to run on every launch,
--- since PGlite only runs it when the db file doesn't exist yet.
+-- and runs against the existing PGlite database on every launch, so forward
+-- ALTERs preserve installed app data.
 --
 -- Auth tables (user, session, account, verification) are intentionally
 -- omitted. In DESKTOP_MODE the app bypasses Better Auth entirely and
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS sales (
   change_given    NUMERIC(12, 2),
   payment_method  TEXT NOT NULL DEFAULT 'cash',
   notes           TEXT,
+  client_request_id TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -177,6 +179,7 @@ ALTER TABLE batches ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DE
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashier_id UUID;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12, 2);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS change_given NUMERIC(12, 2);
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT;
 ALTER TABLE sale_items ALTER COLUMN batch_id DROP NOT NULL;
 
 -- Align databases created by early desktop builds with the canonical sales
@@ -219,6 +222,8 @@ CREATE INDEX IF NOT EXISTS idx_batches_intake_session
   WHERE intake_session_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_sales_store_id        ON sales(store_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request
+  ON sales(store_id, client_request_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id    ON sale_items(sale_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
 

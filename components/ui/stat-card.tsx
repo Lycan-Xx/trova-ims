@@ -4,11 +4,12 @@ import { cn } from '@/lib/utils'
 interface StatCardProps extends React.HTMLAttributes<HTMLDivElement> {
   title: string
   value: string | number
+  description?: string
   trend?: number
   trendLabel?: string
 }
 
-export function StatCard({ title, value, trend, trendLabel, className, ...props }: StatCardProps) {
+export function StatCard({ title, value, description, trend, trendLabel, className, ...props }: StatCardProps) {
   const hasTrend = trend !== undefined && trend !== null
   const isPositive = hasTrend && trend >= 0
   const isNegative = hasTrend && trend < 0
@@ -28,6 +29,10 @@ export function StatCard({ title, value, trend, trendLabel, className, ...props 
       <p className="text-2xl font-semibold text-text-primary leading-none mb-2">
         {value}
       </p>
+
+      {description && (
+        <p className="text-xs text-text-muted mb-2">{description}</p>
+      )}
 
       {hasTrend && (
         <div className="flex items-center gap-1.5">

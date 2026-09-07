@@ -199,8 +199,9 @@ export function AnalyticsPanels({
           value={sales ? fmtNum(sales.totalTransactions) : '0'}
         />
         <StatCard
-          title="Avg Transaction"
+          title="Average Transaction Value"
           value={sales ? fmtCurrency(sales.avgTransactionValue) : `${currencySymbol}0`}
+          description="Total revenue divided by completed transactions"
         />
         <StatCard
           title="Units Sold"

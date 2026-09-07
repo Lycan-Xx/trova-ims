@@ -50,6 +50,11 @@ function getQtyError(product: ProductWithStock, qty: number): string | null {
   return qty > product.current_stock ? `Max ${product.current_stock} available` : null
 }
 
+function createCheckoutRequestId(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function NewSalePage() {
@@ -92,6 +97,8 @@ export default function NewSalePage() {
 
   // Submit state
   const [submitting, setSubmitting] = React.useState(false)
+  const submissionInFlightRef = React.useRef(false)
+  const checkoutRequestRef = React.useRef<{ fingerprint: string; requestId: string } | null>(null)
 
   // Mobile drawer state
   const [mobileCheckoutOpen, setMobileCheckoutOpen] = React.useState(false)
@@ -272,25 +279,42 @@ export default function NewSalePage() {
   }, [])
 
   const amountPaidNum = parseFloat(amountPaid) || 0
-  const change = paymentMethod === 'cash' ? amountPaidNum - cartTotal : null
+  const amountPaidCents = Math.round(amountPaidNum * 100)
+  const cartTotalCents = Math.round(cartTotal * 100)
+  const change = paymentMethod === 'cash' ? (amountPaidCents - cartTotalCents) / 100 : null
 
   const hasQtyErrors = cart.some((e) => e.qtyError !== null)
   const insufficientCash =
-    paymentMethod === 'cash' && amountPaidNum < cartTotal
+    paymentMethod === 'cash' && amountPaidCents < cartTotalCents
+  const exactCashAmount =
+    paymentMethod !== 'cash' || (amountPaid !== '' && amountPaidCents === cartTotalCents)
   const canSubmit =
     cart.length > 0 && !hasQtyErrors && !submitting &&
-    (paymentMethod !== 'cash' || amountPaidNum >= cartTotal)
+    exactCashAmount
 
   // ── Submit ─────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
-    if (!canSubmit) return
+    if (!canSubmit || submissionInFlightRef.current) return
+    submissionInFlightRef.current = true
     setSubmitting(true)
+    const fingerprint = JSON.stringify({
+      items: cart.map((entry) => ({ productId: entry.product.id, qty: entry.qty })),
+      paymentMethod,
+      amountPaidCents,
+    })
+    const previousRequest = checkoutRequestRef.current
+    const requestId = previousRequest?.fingerprint === fingerprint
+      ? previousRequest.requestId
+      : createCheckoutRequestId()
+    checkoutRequestRef.current = { fingerprint, requestId }
+    let completed = false
     try {
       const res = await createSale(
         cart.map((e) => ({ productId: e.product.id, qtySold: e.qty })),
         paymentMethod,
         amountPaidNum,
+        requestId,
       )
       if (res.success) {
         if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -317,14 +341,18 @@ export default function NewSalePage() {
           await emit(CUSTOMER_DISPLAY_EVENT, completionPayload)
         }
         toast.success(`Sale recorded — ${res.data.receiptNumber}`)
+        completed = true
         router.push(`/sales/${res.data.saleId}`)
       } else {
         toast.error(res.error)
-        setSubmitting(false)
       }
     } catch {
       toast.error('An unexpected error occurred.')
-      setSubmitting(false)
+    } finally {
+      if (!completed) {
+        submissionInFlightRef.current = false
+        setSubmitting(false)
+      }
     }
   }
 
@@ -820,7 +848,7 @@ export default function NewSalePage() {
                 className="w-full h-10 px-3 rounded-lg text-sm outline-none"
                 style={{
                   background: 'var(--bg-input)',
-                  border: `1px solid ${insufficientCash && amountPaid !== '' ? 'var(--danger)' : 'var(--border)'}`,
+                  border: `1px solid ${amountPaid !== '' && !exactCashAmount ? 'var(--danger)' : 'var(--border)'}`,
                   color: 'var(--text-primary)',
                 }}
               />
@@ -829,18 +857,18 @@ export default function NewSalePage() {
               {amountPaid !== '' && change !== null && (
                 <div className="flex items-center justify-between mt-3 px-3 py-2.5 rounded-lg"
                   style={{
-                    background: change >= 0 ? 'var(--positive-bg)' : 'var(--danger-bg)',
-                    border: `1px solid ${change >= 0 ? 'var(--positive)' : 'var(--danger)'}`,
+                    background: change === 0 ? 'var(--positive-bg)' : 'var(--danger-bg)',
+                    border: `1px solid ${change === 0 ? 'var(--positive)' : 'var(--danger)'}`,
                   }}
                 >
-                  <span className="text-xs font-medium" style={{ color: change >= 0 ? 'var(--positive)' : 'var(--danger)' }}>
-                    {change >= 0 ? 'Change' : 'Shortfall'}
+                  <span className="text-xs font-medium" style={{ color: change === 0 ? 'var(--positive)' : 'var(--danger)' }}>
+                    {change < 0 ? 'Shortfall' : change > 0 ? 'Change — adjust amount' : 'Change'}
                   </span>
                   <span
                     className="font-bold"
                     style={{
                       fontSize: 18,
-                      color: change >= 0 ? 'var(--positive)' : 'var(--danger)',
+                      color: change === 0 ? 'var(--positive)' : 'var(--danger)',
                       lineHeight: 1,
                     }}
                   >
@@ -886,8 +914,12 @@ export default function NewSalePage() {
             <p className="text-xs text-center -mt-2" style={{ color: 'var(--text-muted)' }}>
               {hasQtyErrors
                 ? 'Fix quantity errors above'
+                : amountPaid === ''
+                ? 'Enter the exact cash amount received'
                 : insufficientCash
-                ? 'Amount received is less than total'
+                ? 'Amount received is less than the sale total'
+                : paymentMethod === 'cash' && !exactCashAmount
+                ? 'Amount received must match the sale total exactly'
                 : ''}
             </p>
           )}

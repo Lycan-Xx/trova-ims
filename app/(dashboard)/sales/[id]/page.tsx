@@ -6,6 +6,8 @@ import { ReceiptDownloadButton } from '@/components/sales/receipt-download-butto
 import { PrintReceiptButton } from '@/components/sales/print-receipt-button'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol } from '@/lib/currency'
+import { getCurrentUser } from '@/lib/auth'
+import { DeleteSaleButton } from '@/components/sales/delete-sale-button'
 
 export default async function SaleConfirmationPage({
   params,
@@ -13,6 +15,9 @@ export default async function SaleConfirmationPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+
   const [result, storeResult] = await Promise.all([getSaleById(id), getStoreSettings()])
 
   if (!result.success) redirect('/sales')
@@ -252,6 +257,10 @@ export default async function SaleConfirmationPage({
           >
             New Sale
           </Link>
+
+          {user.role === 'owner' && (
+            <DeleteSaleButton saleId={sale.id} receiptNumber={sale.receipt_number} />
+          )}
         </div>
       </div>
     </div>

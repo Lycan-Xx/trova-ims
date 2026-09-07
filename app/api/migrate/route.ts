@@ -123,12 +123,16 @@ const STATEMENTS = [
     change_given   DECIMAL(12,2),
     payment_method TEXT NOT NULL DEFAULT 'cash',
     notes          TEXT,
+    client_request_id TEXT,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT`,
   `CREATE INDEX IF NOT EXISTS idx_sales_store_id       ON sales(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_cashier_id     ON sales(cashier_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_receipt_number ON sales(receipt_number)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_created_at     ON sales(created_at DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request
+    ON sales(store_id, client_request_id)`,
 
   `CREATE TABLE IF NOT EXISTS sale_items (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -16,10 +16,11 @@ import {
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
 import { SalesCsvButton } from '@/components/sales/sales-csv-button'
-import type { SaleRow } from '@/app/actions/sales'
+import type { SaleRow, SalesDayTotal } from '@/app/actions/sales'
 
 interface SalesListProps {
   sales: SaleRow[]
+  dayTotals: SalesDayTotal[]
   totalCount: number
   totalPages: number
   currentPage: number
@@ -31,7 +32,6 @@ interface SalesListProps {
   summary?: {
     totalRevenue: number
     transactionCount: number
-    avgTransactionValue: number
     totalUnitsSold: number
   }
   summaryLabel?: string
@@ -48,16 +48,9 @@ function formatDateTime(value: string): string {
   })
 }
 
-function getDayKey(value: string): string {
-  const date = new Date(value)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
 function formatDayHeading(value: string): string {
-  return new Date(value).toLocaleDateString('en-GB', {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -79,6 +72,7 @@ function getPaymentLabel(method: string): string {
 
 export function SalesList({
   sales,
+  dayTotals,
   totalCount,
   totalPages,
   currentPage,
@@ -122,16 +116,9 @@ export function SalesList({
     '',
   ]
 
-  const visibleDayTotals = sales.reduce<Record<string, { count: number; revenue: number; firstDate: string }>>(
-    (acc, sale) => {
-      const key = getDayKey(sale.created_at)
-      const existing = acc[key] ?? { count: 0, revenue: 0, firstDate: sale.created_at }
-      existing.count += 1
-      existing.revenue += parseFloat(sale.total_amount)
-      acc[key] = existing
-      return acc
-    },
-    {},
+  const dayTotalsByDate = React.useMemo(
+    () => new Map(dayTotals.map((total) => [total.date, total])),
+    [dayTotals],
   )
 
   return (
@@ -139,7 +126,7 @@ export function SalesList({
       {/* Owner summary strip */}
       {isOwner && summary && (
         <div
-          className="grid grid-cols-2 lg:grid-cols-4 gap-4 rounded-xl border p-4"
+          className="grid grid-cols-2 lg:grid-cols-3 gap-4 rounded-xl border p-4"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <div className="flex flex-col gap-1">
@@ -164,14 +151,6 @@ export function SalesList({
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
               {summary.totalUnitsSold.toLocaleString()}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              Avg. Transaction
-            </span>
-            <span className="text-xl font-bold" style={{ color: 'var(--accent-teal)' }}>
-              {formatCurrency(summary.avgTransactionValue, currency)}
             </span>
           </div>
         </div>
@@ -314,10 +293,13 @@ export function SalesList({
             </thead>
             <tbody>
               {sales.map((sale, index) => {
-                const dayKey = getDayKey(sale.created_at)
-                const previousDayKey = index > 0 ? getDayKey(sales[index - 1].created_at) : null
+                const dayKey = sale.sales_date
+                const previousDayKey = index > 0 ? sales[index - 1].sales_date : null
                 const showDayHeader = dayKey !== previousDayKey
-                const dayTotal = visibleDayTotals[dayKey]
+                const dayTotal = dayTotalsByDate.get(dayKey) ?? {
+                  transactionCount: 1,
+                  revenue: parseFloat(sale.total_amount),
+                }
 
                 return (
                   <React.Fragment key={sale.id}>
@@ -326,10 +308,10 @@ export function SalesList({
                         <td colSpan={TABLE_COLS.length} className="px-4 py-2.5" style={{ background: 'var(--bg-nav)' }}>
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                              {formatDayHeading(sale.created_at)}
+                              {formatDayHeading(dayKey)}
                             </span>
                             <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
-                              {dayTotal.count} {dayTotal.count === 1 ? 'transaction' : 'transactions'} - {formatCurrency(dayTotal.revenue, currency)}
+                              {dayTotal.transactionCount} {dayTotal.transactionCount === 1 ? 'transaction' : 'transactions'} - {formatCurrency(dayTotal.revenue, currency)}
                             </span>
                           </div>
                         </td>

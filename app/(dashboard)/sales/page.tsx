@@ -45,13 +45,13 @@ export default async function SalesPage({ searchParams }: PageProps) {
     ? salesResult.data
     : {
         sales: [],
+        dayTotals: [],
         totalCount: 0,
         totalPages: 1,
         currentPage: 1,
         summary: {
           totalRevenue: 0,
           transactionCount: 0,
-          avgTransactionValue: 0,
           totalUnitsSold: 0,
         },
       }
@@ -79,6 +79,7 @@ export default async function SalesPage({ searchParams }: PageProps) {
 
       <SalesList
         sales={salesData.sales}
+        dayTotals={salesData.dayTotals}
         totalCount={salesData.totalCount}
         totalPages={salesData.totalPages}
         currentPage={salesData.currentPage}

@@ -52,6 +52,7 @@ export interface SaleRow {
   payment_method: string
   notes: string | null
   created_at: string
+  sales_date: string
   items_count: number
 }
 
@@ -62,8 +63,13 @@ export interface SaleDetail extends SaleRow {
 export interface SalesSummary {
   totalRevenue: number
   transactionCount: number
-  avgTransactionValue: number
   totalUnitsSold: number
+}
+
+export interface SalesDayTotal {
+  date: string
+  transactionCount: number
+  revenue: number
 }
 
 export interface SalesCsvRow {
@@ -78,12 +84,57 @@ export interface SalesCsvRow {
   cashierName: string | null
 }
 
+async function getExistingSaleForRequest(
+  client: ClientBase,
+  storeId: string,
+  requestId: string,
+): Promise<SaleResult | null> {
+  const saleRes = await client.query(
+    `SELECT id, receipt_number, total_amount, change_given, payment_method
+     FROM sales
+     WHERE store_id = $1 AND client_request_id = $2
+     LIMIT 1`,
+    [storeId, requestId],
+  )
+  const sale = saleRes.rows[0]
+  if (!sale) return null
+
+  const itemsRes = await client.query(
+    `SELECT si.product_id, p.name AS product_name, si.batch_id, b.batch_ref,
+            si.qty_sold, si.unit_price, si.line_total
+     FROM sale_items si
+     JOIN products p ON p.id = si.product_id
+     LEFT JOIN batches b ON b.id = si.batch_id
+     WHERE si.sale_id = $1
+     ORDER BY si.id`,
+    [sale.id],
+  )
+
+  return {
+    saleId: sale.id,
+    receiptNumber: sale.receipt_number,
+    totalAmount: sale.total_amount,
+    changeGiven: sale.change_given,
+    paymentMethod: sale.payment_method,
+    items: itemsRes.rows.map((item) => ({
+      productId: item.product_id,
+      productName: item.product_name,
+      batchId: item.batch_id,
+      batchRef: item.batch_ref,
+      qtySold: item.qty_sold,
+      unitPrice: item.unit_price,
+      lineTotal: item.line_total,
+    })),
+  }
+}
+
 // ── createSale ─────────────────────────────────────────────────────────────────
 
 export async function createSale(
   cartItems: CartItem[],
   paymentMethod: 'cash' | 'transfer' | 'pos',
   amountPaid: number,
+  requestId: string,
 ): Promise<{ success: true; data: SaleResult } | { success: false; error: string }> {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
@@ -91,12 +142,23 @@ export async function createSale(
   if (!cartItems || cartItems.length === 0) {
     return { success: false, error: 'Cart is empty.' }
   }
+  if (!requestId || requestId.length > 128) {
+    return { success: false, error: 'Invalid checkout request.' }
+  }
 
   try {
     const result = await withConnection(async (client: ClientBase) => {
       await client.query('BEGIN')
 
       try {
+        // A retry after a slow or interrupted response must return the first
+        // completed sale instead of recording the basket again.
+        const existingSale = await getExistingSaleForRequest(client, user.store_id, requestId)
+        if (existingSale) {
+          await client.query('COMMIT')
+          return existingSale
+        }
+
         // ── STEP 1: FEFO Batch Resolution ────────────────────────────────────
         const allDeductions: SaleDeduction[] = []
 
@@ -141,6 +203,20 @@ export async function createSale(
             [item.productId, user.store_id],
           )
 
+          // This query may have waited for the original checkout to release a
+          // batch lock. Re-check the request before evaluating the now-reduced
+          // stock, otherwise a legitimate retry can report insufficient stock
+          // instead of returning the sale that already completed.
+          const completedWhileWaiting = await getExistingSaleForRequest(
+            client,
+            user.store_id,
+            requestId,
+          )
+          if (completedWhileWaiting) {
+            await client.query('COMMIT')
+            return completedWhileWaiting
+          }
+
           const batches = batchRes.rows
           const totalAvailable = batches.reduce(
             (sum: number, b: { qty_remaining: number }) => sum + b.qty_remaining, 0,
@@ -180,6 +256,13 @@ export async function createSale(
           0,
         )
 
+        if (
+          paymentMethod === 'cash' &&
+          (!Number.isFinite(amountPaid) || Math.round(amountPaid * 100) !== Math.round(totalAmount * 100))
+        ) {
+          throw new Error('Cash amount received must match the sale total exactly.')
+        }
+
         const changeGiven =
           paymentMethod === 'cash' ? amountPaid - totalAmount : null
 
@@ -199,9 +282,10 @@ export async function createSale(
         const saleRes = await client.query(
           `INSERT INTO sales
              (id, store_id, receipt_number, cashier_id, total_amount,
-              amount_paid, change_given, payment_method, notes, created_at)
+              amount_paid, change_given, payment_method, notes, client_request_id, created_at)
            VALUES
-             (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NULL, NOW())
+             (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NULL, $8, NOW())
+           ON CONFLICT (store_id, client_request_id) DO NOTHING
            RETURNING id, receipt_number, total_amount, change_given, payment_method`,
           [
             user.store_id,
@@ -211,8 +295,16 @@ export async function createSale(
             paymentMethod === 'cash' ? amountPaid.toFixed(2) : null,
             changeGiven !== null ? changeGiven.toFixed(2) : null,
             paymentMethod,
+            requestId,
           ],
         )
+
+        if (saleRes.rows.length === 0) {
+          const existingSale = await getExistingSaleForRequest(client, user.store_id, requestId)
+          if (!existingSale) throw new Error('A matching sale could not be found.')
+          await client.query('COMMIT')
+          return existingSale
+        }
 
         const sale = saleRes.rows[0]
 
@@ -313,7 +405,7 @@ export async function getSales(filters?: {
   paymentMethod?: string
   page?: number
 }): Promise<
-  | { success: true; data: { sales: SaleRow[]; totalCount: number; totalPages: number; currentPage: number; summary: SalesSummary } }
+  | { success: true; data: { sales: SaleRow[]; dayTotals: SalesDayTotal[]; totalCount: number; totalPages: number; currentPage: number; summary: SalesSummary } }
   | { success: false; error: string }
 > {
   const user = await getCurrentUser()
@@ -394,6 +486,18 @@ export async function getSales(filters?: {
     const transactionCount = parseInt(String(summaryRow.transaction_count), 10) || 0
     const totalUnitsSold = parseInt(String(summaryRow.total_units_sold), 10) || 0
 
+    const dayTotalsRes = await query(
+      `SELECT
+         s.created_at::date::text AS date,
+         COUNT(s.id)::int AS transaction_count,
+         COALESCE(SUM(s.total_amount), 0)::float AS revenue
+       FROM sales s
+       WHERE ${where}
+       GROUP BY s.created_at::date
+       ORDER BY s.created_at::date DESC`,
+      params,
+    )
+
     const dataRes = await query(
       `SELECT
          s.id,
@@ -407,6 +511,7 @@ export async function getSales(filters?: {
          s.payment_method,
          s.notes,
          s.created_at,
+         s.created_at::date::text AS sales_date,
          (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id)::int AS items_count
        FROM sales s
        LEFT JOIN users u ON u.id = s.cashier_id
@@ -420,13 +525,17 @@ export async function getSales(filters?: {
       success: true,
       data: {
         sales: dataRes.rows as SaleRow[],
+        dayTotals: dayTotalsRes.rows.map((row) => ({
+          date: row.date,
+          transactionCount: parseInt(String(row.transaction_count), 10) || 0,
+          revenue: parseFloat(String(row.revenue)) || 0,
+        })),
         totalCount,
         totalPages,
         currentPage: page,
         summary: {
           totalRevenue,
           transactionCount,
-          avgTransactionValue: transactionCount > 0 ? totalRevenue / transactionCount : 0,
           totalUnitsSold,
         },
       },
@@ -532,7 +641,9 @@ export async function getSaleById(
          s.change_given,
          s.payment_method,
          s.notes,
-         s.created_at
+         s.created_at,
+         s.created_at::date::text AS sales_date,
+         (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id)::int AS items_count
        FROM sales s
        LEFT JOIN users u ON u.id = s.cashier_id
        WHERE s.id = $1 AND s.store_id = $2
@@ -585,6 +696,80 @@ export async function getSaleById(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch sale.'
+    return { success: false, error: message }
+  }
+}
+
+export async function deleteSale(
+  saleId: string,
+  confirmationText: string,
+): Promise<
+  | { success: true; data: { receiptNumber: string } }
+  | { success: false; error: string }
+> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  if (user.role !== 'owner') {
+    return { success: false, error: 'Only the store owner can delete a sale.' }
+  }
+  if (!saleId || !confirmationText) {
+    return { success: false, error: 'Sale and confirmation are required.' }
+  }
+
+  try {
+    const receiptNumber = await withConnection(async (client: ClientBase) => {
+      await client.query('BEGIN')
+
+      try {
+        const saleRes = await client.query(
+          `SELECT id, receipt_number
+           FROM sales
+           WHERE id = $1 AND store_id = $2
+           FOR UPDATE`,
+          [saleId, user.store_id],
+        )
+        const sale = saleRes.rows[0]
+        if (!sale) throw new Error('Sale not found.')
+
+        const expectedConfirmation = `DELETE ${sale.receipt_number}`
+        if (confirmationText !== expectedConfirmation) {
+          throw new Error('The confirmation text does not match this receipt.')
+        }
+
+        // Return tracked quantities to the exact batches that supplied them.
+        // Untracked sale items have no batch_id and therefore need no stock
+        // adjustment. This UPDATE cannot create or delete any batch records.
+        await client.query(
+          `UPDATE batches b
+           SET qty_remaining = b.qty_remaining + restored.qty_sold
+           FROM (
+             SELECT si.batch_id, SUM(si.qty_sold)::int AS qty_sold
+             FROM sale_items si
+             WHERE si.sale_id = $1 AND si.batch_id IS NOT NULL
+             GROUP BY si.batch_id
+           ) restored
+           WHERE b.id = restored.batch_id AND b.store_id = $2`,
+          [saleId, user.store_id],
+        )
+
+        // sale_items are removed by their ON DELETE CASCADE foreign key. The
+        // batches themselves are never deleted by this operation.
+        await client.query(
+          'DELETE FROM sales WHERE id = $1 AND store_id = $2',
+          [saleId, user.store_id],
+        )
+
+        await client.query('COMMIT')
+        return sale.receipt_number as string
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      }
+    })
+
+    return { success: true, data: { receiptNumber } }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to delete sale.'
     return { success: false, error: message }
   }
 }
