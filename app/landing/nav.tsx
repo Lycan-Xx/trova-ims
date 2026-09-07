@@ -25,7 +25,7 @@ export default function Nav() {
           Sign in
         </Link>
         <Link
-          href="/sign-in"
+          href="/demo"
           className="text-[13px] font-semibold text-white bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] px-4 py-[7px] rounded-lg transition-colors duration-150 whitespace-nowrap"
         >
           Try Demo

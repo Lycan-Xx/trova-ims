@@ -119,7 +119,7 @@ export default function Hero() {
           {/* CTA row */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Link
-              href="/sign-in"
+              href="/demo"
               className="inline-flex items-center gap-2.5 text-white font-semibold px-6 py-3.5 rounded-xl transition-opacity duration-150 hover:opacity-90 whitespace-nowrap"
               style={{
                 backgroundColor: 'var(--accent-primary)',

@@ -61,7 +61,7 @@ export default function Cta() {
 
         {/* Primary CTA */}
         <Link
-          href="/sign-in"
+          href="/demo"
           className="inline-flex items-center gap-2.5 text-white font-semibold px-8 py-4 rounded-xl transition-opacity duration-150 hover:opacity-90 whitespace-nowrap"
           style={{ backgroundColor: 'var(--accent-primary)', fontSize: 15 }}
         >
@@ -99,12 +99,18 @@ export default function Cta() {
           >
             Download Trova for your desktop
           </p>
-          <p
-            className="text-[12px]"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            macOS, Windows, and Linux installers coming soon. Work completely offline with persistent local storage.
+          <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+            Work completely offline with persistent local storage.
           </p>
+          <Link
+            href="https://github.com/Lycan-Xx/trova-ims/releases"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex text-[12px] font-semibold transition-colors hover:text-white"
+            style={{ color: 'var(--accent-primary)' }}
+          >
+            View available desktop downloads →
+          </Link>
         </div>
       </div>
     </section>

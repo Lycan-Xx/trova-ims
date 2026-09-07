@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Nav from '@/app/landing/nav'
 import Hero from '@/app/landing/hero'
 import Pain from '@/app/landing/pain'
