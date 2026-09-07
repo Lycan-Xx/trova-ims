@@ -15,21 +15,26 @@ import {
 } from '@/components/ui/select'
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
-import type { SaleRow } from '@/app/actions/sales'
+import { SalesCsvButton } from '@/components/sales/sales-csv-button'
+import type { SaleRow, SalesDayTotal } from '@/app/actions/sales'
 
 interface SalesListProps {
   sales: SaleRow[]
+  dayTotals: SalesDayTotal[]
   totalCount: number
   totalPages: number
   currentPage: number
   isOwner: boolean
   cashiers: { id: string; name: string }[]
+  dateFrom?: string
+  dateTo?: string
   // Summary totals (owner only)
   summary?: {
     totalRevenue: number
     transactionCount: number
-    avgTransactionValue: number
+    totalUnitsSold: number
   }
+  summaryLabel?: string
 }
 
 function formatDateTime(value: string): string {
@@ -40,6 +45,16 @@ function formatDateTime(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
+  })
+}
+
+function formatDayHeading(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
   })
 }
 
@@ -57,12 +72,16 @@ function getPaymentLabel(method: string): string {
 
 export function SalesList({
   sales,
+  dayTotals,
   totalCount,
   totalPages,
   currentPage,
   isOwner,
   cashiers,
+  dateFrom,
+  dateTo,
   summary,
+  summaryLabel = 'Selected Range',
 }: SalesListProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -97,17 +116,22 @@ export function SalesList({
     '',
   ]
 
+  const dayTotalsByDate = React.useMemo(
+    () => new Map(dayTotals.map((total) => [total.date, total])),
+    [dayTotals],
+  )
+
   return (
     <div className="flex flex-col gap-4">
       {/* Owner summary strip */}
-      {isOwner && summary && totalCount > 0 && (
+      {isOwner && summary && (
         <div
-          className="grid grid-cols-3 gap-4 rounded-xl border p-4"
+          className="grid grid-cols-2 lg:grid-cols-3 gap-4 rounded-xl border p-4"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              Total Revenue
+              {summaryLabel} Revenue
             </span>
             <span className="text-xl font-bold" style={{ color: 'var(--positive)' }}>
               {formatCurrency(summary.totalRevenue, currency)}
@@ -123,10 +147,10 @@ export function SalesList({
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-              Avg. Transaction
+              Items Sold
             </span>
-            <span className="text-xl font-bold" style={{ color: 'var(--accent-teal)' }}>
-              {formatCurrency(summary.avgTransactionValue, currency)}
+            <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {summary.totalUnitsSold.toLocaleString()}
             </span>
           </div>
         </div>
@@ -137,7 +161,7 @@ export function SalesList({
         {/* Date from */}
         <input
           type="date"
-          defaultValue={searchParams.get('dateFrom') ?? ''}
+          defaultValue={dateFrom ?? ''}
           onChange={(e) => updateParam('dateFrom', e.target.value)}
           className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
           style={{
@@ -152,7 +176,7 @@ export function SalesList({
         {/* Date to */}
         <input
           type="date"
-          defaultValue={searchParams.get('dateTo') ?? ''}
+          defaultValue={dateTo ?? ''}
           onChange={(e) => updateParam('dateTo', e.target.value)}
           className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
           style={{
@@ -207,6 +231,14 @@ export function SalesList({
         )}
 
         {/* New Sale CTA */}
+        {isOwner && (
+          <SalesCsvButton
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            cashierId={searchParams.get('cashierId') ?? undefined}
+            paymentMethod={searchParams.get('paymentMethod') ?? undefined}
+          />
+        )}
         <Link href="/sales/new" className="ml-auto">
           <Button
             className="h-9 rounded-lg px-4 text-sm font-medium text-white"
@@ -260,14 +292,37 @@ export function SalesList({
               </tr>
             </thead>
             <tbody>
-              {sales.map((sale) => (
-                <tr
-                  key={sale.id}
-                  className="border-t transition-colors"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
-                >
+              {sales.map((sale, index) => {
+                const dayKey = sale.sales_date
+                const previousDayKey = index > 0 ? sales[index - 1].sales_date : null
+                const showDayHeader = dayKey !== previousDayKey
+                const dayTotal = dayTotalsByDate.get(dayKey) ?? {
+                  transactionCount: 1,
+                  revenue: parseFloat(sale.total_amount),
+                }
+
+                return (
+                  <React.Fragment key={sale.id}>
+                    {showDayHeader && (
+                      <tr>
+                        <td colSpan={TABLE_COLS.length} className="px-4 py-2.5" style={{ background: 'var(--bg-nav)' }}>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                              {formatDayHeading(dayKey)}
+                            </span>
+                            <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+                              {dayTotal.transactionCount} {dayTotal.transactionCount === 1 ? 'transaction' : 'transactions'} - {formatCurrency(dayTotal.revenue, currency)}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    <tr
+                      className="border-t transition-colors"
+                      style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
+                    >
                   {/* Receipt Number */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="mono text-[13px]" style={{ color: 'var(--text-muted)' }}>
@@ -322,8 +377,10 @@ export function SalesList({
                       View Receipt
                     </Link>
                   </td>
-                </tr>
-              ))}
+                    </tr>
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

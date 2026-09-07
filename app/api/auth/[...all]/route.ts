@@ -15,15 +15,26 @@ const desktopHandler = async (_request: NextRequest) => {
   return NextResponse.json(null)
 }
 
-const { GET: betterAuthGET, POST: betterAuthPOST } = toNextJsHandler(auth.handler)
+// toNextJsHandler is only used in cloud mode — the desktop stub on auth
+// has handler.GET/POST shaped differently. The cast sidesteps the union
+// type at compile time; at runtime IS_DESKTOP guards are correct.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const betterAuthHandlers = IS_DESKTOP ? null : toNextJsHandler((auth as any).handler)
+
+function getBetterAuthGET() {
+  return betterAuthHandlers!.GET
+}
+function getBetterAuthPOST() {
+  return betterAuthHandlers!.POST
+}
 
 // Wrap handlers to provide better error messages
 export async function GET(request: NextRequest) {
   if (IS_DESKTOP) {
-    return desktopHandler()
+    return desktopHandler(request)
   }
   try {
-    return await betterAuthGET(request)
+    return await getBetterAuthGET()(request)
   } catch (err) {
     console.error('[auth-api-get] Error:', err)
     const message = err instanceof Error ? err.message : String(err)
@@ -48,10 +59,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (IS_DESKTOP) {
-    return desktopHandler()
+    return desktopHandler(request)
   }
   try {
-    return await betterAuthPOST(request)
+    return await getBetterAuthPOST()(request)
   } catch (err) {
     console.error('[auth-api-post] Error:', err)
     const message = err instanceof Error ? err.message : String(err)

@@ -1,7 +1,10 @@
 {
   "name": "my-project",
-  "version": "0.1.4",
+  "version": "1.7.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:desktop": "node ./scripts/dev-desktop.js",
@@ -15,7 +18,7 @@
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
     "desktop:dev:external": "tauri dev --no-dev-server",
-    "desktop:build": "tauri build"
+    "desktop:build": "node scripts/desktop-build.mjs"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1075.0",
@@ -23,6 +26,7 @@
     "@electric-sql/pglite": "^0.5.5",
     "@react-pdf/renderer": "^4.5.1",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "@vercel/analytics": "1.6.1",
     "@vercel/functions": "^3.7.3",
     "better-auth": "^1.6.20",

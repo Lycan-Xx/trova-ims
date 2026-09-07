@@ -9,7 +9,14 @@ import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { getProducts, getProductByBarcode } from '@/app/actions/products'
 import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
+import { getStoreSettings } from '@/app/actions/settings'
 import type { ProductWithStock } from '@/app/actions/products'
+import {
+  clearCustomerDisplaySnapshot,
+  CUSTOMER_DISPLAY_EVENT,
+  saveCustomerDisplaySnapshot,
+  type CustomerDisplayCart,
+} from '@/lib/customer-display'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -30,11 +37,30 @@ function fmt(n: number) {
   }).format(n)
 }
 
+function tracksInventory(product: ProductWithStock): boolean {
+  return product.track_inventory !== false
+}
+
+function productIsOutOfStock(product: ProductWithStock): boolean {
+  return tracksInventory(product) && product.current_stock === 0
+}
+
+function getQtyError(product: ProductWithStock, qty: number): string | null {
+  if (!tracksInventory(product)) return null
+  return qty > product.current_stock ? `Max ${product.current_stock} available` : null
+}
+
+function createCheckoutRequestId(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function NewSalePage() {
   const router = useRouter()
   const { currency } = useCurrency()
+  const [storeName, setStoreName] = React.useState('Trova IMS')
 
   // Search state
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -45,9 +71,13 @@ export default function NewSalePage() {
   const searchRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestRef = React.useRef(0)
 
   // Cart state
   const [cart, setCart] = React.useState<CartEntry[]>([])
+  const customerDisplayPayloadRef = React.useRef<CustomerDisplayCart | null>(null)
+  const customerSaleCompletedRef = React.useRef(false)
+  const customerSaleStartedAtRef = React.useRef(Date.now())
 
   // Effective per-unit prices, keyed by product id. This is the price that
   // will actually be charged (the next FEFO batch's override, if any) — it
@@ -67,6 +97,8 @@ export default function NewSalePage() {
 
   // Submit state
   const [submitting, setSubmitting] = React.useState(false)
+  const submissionInFlightRef = React.useRef(false)
+  const checkoutRequestRef = React.useRef<{ fingerprint: string; requestId: string } | null>(null)
 
   // Mobile drawer state
   const [mobileCheckoutOpen, setMobileCheckoutOpen] = React.useState(false)
@@ -74,6 +106,12 @@ export default function NewSalePage() {
   // Autofocus on mount
   React.useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  React.useEffect(() => {
+    void getStoreSettings().then((result) => {
+      if (result.success) setStoreName(result.data.name)
+    })
   }, [])
 
   // Close dropdown on outside click
@@ -90,23 +128,49 @@ export default function NewSalePage() {
   // Debounced product search
   React.useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    const requestId = ++searchRequestRef.current
     setNotFoundBarcode(null)
 
     if (!searchQuery.trim()) {
       setSearchResults([])
       setSearchOpen(false)
+      setSearchLoading(false)
       return
     }
 
     debounceRef.current = setTimeout(async () => {
       setSearchLoading(true)
-      const res = await getProducts({ search: searchQuery.trim(), page: 1 })
-      setSearchLoading(false)
-      if (res.success) {
-        setSearchResults(res.data.products.slice(0, 8))
-        setSearchOpen(true)
+      try {
+        const res = await getProducts({ search: searchQuery.trim(), page: 1 })
+        if (requestId !== searchRequestRef.current) return
+        if (res.success) {
+          setSearchResults(res.data.products.slice(0, 8))
+          setSearchOpen(true)
+        } else {
+          // Action returned a handled error (e.g. DB unavailable)
+          setSearchResults([])
+          setSearchOpen(false)
+          toast.error(`Search failed: ${res.error}`)
+        }
+      } catch {
+        if (requestId !== searchRequestRef.current) return
+        // Unexpected / network-level error — clear results silently
+        setSearchResults([])
+        setSearchOpen(false)
+        toast.error('Could not search products. Please try again.')
+      } finally {
+        // Always clear the loading spinner, even if the action throws
+        if (requestId === searchRequestRef.current) setSearchLoading(false)
       }
     }, 200)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (requestId === searchRequestRef.current) {
+        searchRequestRef.current += 1
+        setSearchLoading(false)
+      }
+    }
   }, [searchQuery])
 
   // Keep effective prices in sync with whatever's currently visible: the
@@ -127,12 +191,12 @@ export default function NewSalePage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────────
 
   function addToCart(product: ProductWithStock) {
-    if (product.current_stock === 0) return
+    if (productIsOutOfStock(product)) return
     setCart((prev) => {
       const existing = prev.find((e) => e.product.id === product.id)
       if (existing) {
         const newQty = existing.qty + 1
-        const qtyError = newQty > product.current_stock ? `Max ${product.current_stock} available` : null
+        const qtyError = getQtyError(product, newQty)
         return prev.map((e) =>
           e.product.id === product.id ? { ...e, qty: newQty, qtyError } : e,
         )
@@ -151,9 +215,7 @@ export default function NewSalePage() {
       prev.map((e) => {
         if (e.product.id !== productId) return e
         if (isNaN(parsed) || parsed < 1) return { ...e, qty: 1, qtyError: null }
-        const qtyError = parsed > e.product.current_stock
-          ? `Max ${e.product.current_stock} available`
-          : null
+        const qtyError = getQtyError(e.product, parsed)
         return { ...e, qty: parsed, qtyError }
       }),
     )
@@ -170,37 +232,127 @@ export default function NewSalePage() {
     0,
   )
 
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    // A successful sale owns the customer display briefly. Do not let a
+    // late price/cart update overwrite the payment-complete screen.
+    if (customerSaleCompletedRef.current) return
+    const payload: CustomerDisplayCart = {
+      storeName,
+      currencySymbol: getCurrencySymbol(currency),
+      items: cart.map((entry) => ({
+        name: entry.product.name,
+        quantity: entry.qty,
+        unitPrice: getPrice(entry.product),
+        total: entry.qty * getPrice(entry.product),
+      })),
+      total: cartTotal,
+      status: cart.length > 0 ? 'cart' : 'idle',
+      saleStartedAt: customerSaleStartedAtRef.current,
+    }
+    customerDisplayPayloadRef.current = payload
+    if (payload.items.length > 0) {
+      saveCustomerDisplaySnapshot(payload)
+    } else {
+      clearCustomerDisplaySnapshot()
+    }
+    void import('@tauri-apps/api/event').then(({ emit }) => {
+      if (!customerSaleCompletedRef.current) {
+        return emit(CUSTOMER_DISPLAY_EVENT, payload)
+      }
+    })
+  }, [cart, cartTotal, currency, effectivePrices, storeName])
+
+  React.useEffect(() => () => {
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+    if (customerSaleCompletedRef.current) return
+    const payload = customerDisplayPayloadRef.current
+    clearCustomerDisplaySnapshot()
+    void import('@tauri-apps/api/event').then(({ emit }) => emit(CUSTOMER_DISPLAY_EVENT, {
+      storeName: payload?.storeName ?? 'Trova IMS',
+      currencySymbol: payload?.currencySymbol ?? getCurrencySymbol('NGN'),
+      items: [],
+      total: 0,
+      status: 'idle',
+      saleStartedAt: payload?.saleStartedAt ?? customerSaleStartedAtRef.current,
+    }))
+  }, [])
+
   const amountPaidNum = parseFloat(amountPaid) || 0
-  const change = paymentMethod === 'cash' ? amountPaidNum - cartTotal : null
+  const amountPaidCents = Math.round(amountPaidNum * 100)
+  const cartTotalCents = Math.round(cartTotal * 100)
+  const change = paymentMethod === 'cash' ? (amountPaidCents - cartTotalCents) / 100 : null
 
   const hasQtyErrors = cart.some((e) => e.qtyError !== null)
   const insufficientCash =
-    paymentMethod === 'cash' && amountPaidNum < cartTotal
+    paymentMethod === 'cash' && amountPaidCents < cartTotalCents
+  const exactCashAmount =
+    paymentMethod !== 'cash' || (amountPaid !== '' && amountPaidCents === cartTotalCents)
   const canSubmit =
     cart.length > 0 && !hasQtyErrors && !submitting &&
-    (paymentMethod !== 'cash' || amountPaidNum >= cartTotal)
+    exactCashAmount
 
   // ── Submit ─────────────────────────────────────────────────────────────────
 
   async function handleSubmit() {
-    if (!canSubmit) return
+    if (!canSubmit || submissionInFlightRef.current) return
+    submissionInFlightRef.current = true
     setSubmitting(true)
+    const fingerprint = JSON.stringify({
+      items: cart.map((entry) => ({ productId: entry.product.id, qty: entry.qty })),
+      paymentMethod,
+      amountPaidCents,
+    })
+    const previousRequest = checkoutRequestRef.current
+    const requestId = previousRequest?.fingerprint === fingerprint
+      ? previousRequest.requestId
+      : createCheckoutRequestId()
+    checkoutRequestRef.current = { fingerprint, requestId }
+    let completed = false
     try {
       const res = await createSale(
         cart.map((e) => ({ productId: e.product.id, qtySold: e.qty })),
         paymentMethod,
         amountPaidNum,
+        requestId,
       )
       if (res.success) {
+        if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          const completionPayload: CustomerDisplayCart = {
+            storeName,
+            currencySymbol: getCurrencySymbol(currency),
+            items: cart.map((entry) => ({
+              name: entry.product.name,
+              quantity: entry.qty,
+              unitPrice: getPrice(entry.product),
+              total: entry.qty * getPrice(entry.product),
+            })),
+            total: cartTotal,
+            status: 'complete',
+            receiptNumber: res.data.receiptNumber,
+            paymentMethod,
+            completedAt: Date.now(),
+            saleStartedAt: customerSaleStartedAtRef.current,
+          }
+          customerSaleCompletedRef.current = true
+          customerDisplayPayloadRef.current = completionPayload
+          saveCustomerDisplaySnapshot(completionPayload)
+          const { emit } = await import('@tauri-apps/api/event')
+          await emit(CUSTOMER_DISPLAY_EVENT, completionPayload)
+        }
         toast.success(`Sale recorded — ${res.data.receiptNumber}`)
+        completed = true
         router.push(`/sales/${res.data.saleId}`)
       } else {
         toast.error(res.error)
-        setSubmitting(false)
       }
     } catch {
       toast.error('An unexpected error occurred.')
-      setSubmitting(false)
+    } finally {
+      if (!completed) {
+        submissionInFlightRef.current = false
+        setSubmitting(false)
+      }
     }
   }
 
@@ -289,7 +441,7 @@ export default function NewSalePage() {
                     // whatever's currently in the dropdown.
                     const barcodeResult = await getProductByBarcode(raw)
                     if (barcodeResult.success && barcodeResult.data) {
-                      if (barcodeResult.data.current_stock > 0) {
+                      if (!productIsOutOfStock(barcodeResult.data)) {
                         addToCart(barcodeResult.data)
                       } else {
                         toast.error(`${barcodeResult.data.name} is out of stock.`)
@@ -299,12 +451,28 @@ export default function NewSalePage() {
 
                     // Not a barcode match — fall back to the normal
                     // search-dropdown behavior for a typed name/SKU.
-                    if (searchResults.length > 0) {
-                      const first = searchResults.find((p) => p.current_stock > 0)
+                    // The debounce may not have completed yet when a user
+                    // presses Enter after typing a name/SKU. Resolve the
+                    // normal search directly so manual lookup remains a
+                    // reliable fallback to barcode lookup.
+                    let typedResults = searchResults
+                    if (typedResults.length === 0) {
+                      const typedResult = await getProducts({ search: raw, page: 1 })
+                      if (!typedResult.success) {
+                        toast.error(typedResult.error)
+                        return
+                      }
+                      typedResults = typedResult.data.products.slice(0, 8)
+                    }
+
+                    if (typedResults.length > 0) {
+                      const first = typedResults.find((p) => !productIsOutOfStock(p))
                       if (first) {
                         addToCart(first)
                         return
                       }
+                      toast.error('All matching products are out of stock.')
+                      return
                     }
 
                     // Nothing matched at all — most likely a scanned code
@@ -339,7 +507,7 @@ export default function NewSalePage() {
                 }}
               >
                 {searchResults.map((product) => {
-                  const outOfStock = product.current_stock === 0
+                  const outOfStock = productIsOutOfStock(product)
                   return (
                     <button
                       key={product.id}
@@ -372,6 +540,10 @@ export default function NewSalePage() {
                         </span>
                         {outOfStock ? (
                           <span className="text-xs" style={{ color: 'var(--danger)' }}>Out of stock</span>
+                        ) : !tracksInventory(product) ? (
+                          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                            Stock not tracked
+                          </span>
                         ) : (
                           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                             {product.current_stock} {product.unit} avail.
@@ -487,7 +659,7 @@ export default function NewSalePage() {
                         <input
                           type="number"
                           min={1}
-                          max={entry.product.current_stock}
+                          max={tracksInventory(entry.product) ? entry.product.current_stock : undefined}
                           value={entry.qty}
                           onChange={(e) => updateQty(entry.product.id, e.target.value)}
                           className="w-16 h-8 text-center text-sm rounded-md outline-none"
@@ -676,7 +848,7 @@ export default function NewSalePage() {
                 className="w-full h-10 px-3 rounded-lg text-sm outline-none"
                 style={{
                   background: 'var(--bg-input)',
-                  border: `1px solid ${insufficientCash && amountPaid !== '' ? 'var(--danger)' : 'var(--border)'}`,
+                  border: `1px solid ${amountPaid !== '' && !exactCashAmount ? 'var(--danger)' : 'var(--border)'}`,
                   color: 'var(--text-primary)',
                 }}
               />
@@ -685,18 +857,18 @@ export default function NewSalePage() {
               {amountPaid !== '' && change !== null && (
                 <div className="flex items-center justify-between mt-3 px-3 py-2.5 rounded-lg"
                   style={{
-                    background: change >= 0 ? 'var(--positive-bg)' : 'var(--danger-bg)',
-                    border: `1px solid ${change >= 0 ? 'var(--positive)' : 'var(--danger)'}`,
+                    background: change === 0 ? 'var(--positive-bg)' : 'var(--danger-bg)',
+                    border: `1px solid ${change === 0 ? 'var(--positive)' : 'var(--danger)'}`,
                   }}
                 >
-                  <span className="text-xs font-medium" style={{ color: change >= 0 ? 'var(--positive)' : 'var(--danger)' }}>
-                    {change >= 0 ? 'Change' : 'Shortfall'}
+                  <span className="text-xs font-medium" style={{ color: change === 0 ? 'var(--positive)' : 'var(--danger)' }}>
+                    {change < 0 ? 'Shortfall' : change > 0 ? 'Change — adjust amount' : 'Change'}
                   </span>
                   <span
                     className="font-bold"
                     style={{
                       fontSize: 18,
-                      color: change >= 0 ? 'var(--positive)' : 'var(--danger)',
+                      color: change === 0 ? 'var(--positive)' : 'var(--danger)',
                       lineHeight: 1,
                     }}
                   >
@@ -742,8 +914,12 @@ export default function NewSalePage() {
             <p className="text-xs text-center -mt-2" style={{ color: 'var(--text-muted)' }}>
               {hasQtyErrors
                 ? 'Fix quantity errors above'
+                : amountPaid === ''
+                ? 'Enter the exact cash amount received'
                 : insufficientCash
-                ? 'Amount received is less than total'
+                ? 'Amount received is less than the sale total'
+                : paymentMethod === 'cash' && !exactCashAmount
+                ? 'Amount received must match the sale total exactly'
                 : ''}
             </p>
           )}

@@ -72,9 +72,11 @@ const STATEMENTS = [
     unit            unit_type NOT NULL DEFAULT 'piece',
     selling_price   DECIMAL(12,2) NOT NULL,
     reorder_level   INTEGER NOT NULL DEFAULT 10,
+    track_inventory BOOLEAN NOT NULL DEFAULT TRUE,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `ALTER TABLE products ADD COLUMN IF NOT EXISTS track_inventory BOOLEAN NOT NULL DEFAULT TRUE`,
   `CREATE INDEX IF NOT EXISTS idx_products_store_id    ON products(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)`,
   `CREATE INDEX IF NOT EXISTS idx_products_sku         ON products(sku)`,
@@ -121,22 +123,27 @@ const STATEMENTS = [
     change_given   DECIMAL(12,2),
     payment_method TEXT NOT NULL DEFAULT 'cash',
     notes          TEXT,
+    client_request_id TEXT,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT`,
   `CREATE INDEX IF NOT EXISTS idx_sales_store_id       ON sales(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_cashier_id     ON sales(cashier_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_receipt_number ON sales(receipt_number)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_created_at     ON sales(created_at DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request
+    ON sales(store_id, client_request_id)`,
 
   `CREATE TABLE IF NOT EXISTS sale_items (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sale_id     UUID NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
     product_id  UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
-    batch_id    UUID NOT NULL REFERENCES batches(id) ON DELETE RESTRICT,
+    batch_id    UUID REFERENCES batches(id) ON DELETE SET NULL,
     qty_sold    INTEGER NOT NULL,
     unit_price  DECIMAL(12,2) NOT NULL,
     line_total  DECIMAL(12,2) NOT NULL
   )`,
+  `ALTER TABLE sale_items ALTER COLUMN batch_id DROP NOT NULL`,
   `CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id    ON sale_items(sale_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sale_items_batch_id   ON sale_items(batch_id)`,

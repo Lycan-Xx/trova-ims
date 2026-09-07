@@ -131,15 +131,27 @@ node scripts/test-desktop-build.mjs current debug
 ### Full Production Build
 
 ```bash
-npm run desktop:build
+# Windows slim package: uses system Node.js and WebView2 bootstrapper
+npm run desktop:build -- --variant slim --bundles msi,nsis
+
+# Windows bundled package: includes Node.js runtime and offline WebView2 installer
+npm run desktop:build -- --variant bundled --bundles msi,nsis
+
+# Build both Windows variants in one run
+npm run desktop:build -- --variant all --bundles msi,nsis
 ```
 
 This runs the full Tauri build pipeline:
 1. Runs `scripts/tauri-prebuild.mjs`
 2. Builds Next.js with `output: 'standalone'`
 3. Copies `public/` and `.next/static/` into standalone
-4. Bundles everything with Tauri
-5. Creates platform-specific installers
+4. Smoke-tests the standalone desktop server through `/api/desktop/health`
+5. Bundles the standalone app with Tauri
+6. Creates platform-specific installers
+
+Windows release variants:
+- `slim`: smaller package, relies on system Node.js and WebView2 bootstrapper
+- `bundled`: larger package, includes the pinned Node.js runtime and offline WebView2 installer
 
 ## CircleCI Setup
 
@@ -178,14 +190,17 @@ This runs the full Tauri build pipeline:
    ```
 4. Click "Trigger Pipeline"
 
-All three platforms (Linux, macOS, Windows) will build in parallel.
+Automatic CircleCI branch builds are Windows-only and produce validation
+artifacts. Release tags are built and published by the GitHub Actions release
+workflow only, after the candidate installers are manually tested and the
+protected release environment is approved. Linux/macOS desktop packages are
+manual-only through the GitHub Actions desktop build workflow.
 
-#### Method 2: Git Tags
+#### Method 2: Releases
 
-```bash
-git tag v0.1.4
-git push origin v0.1.4
-```
+Merge the release-please PR on `main`. GitHub Actions builds the Windows slim
+and bundled candidates, pauses for manual testing and approval, then publishes
+the installers to the GitHub Release.
 
 #### Method 3: Branch Push
 
@@ -195,19 +210,11 @@ Push to `main` or `separation-attempt`:
 git push origin main
 ```
 
-#### Method 4: Scheduled (Nightly)
-
-Automatic nightly builds run at midnight UTC on `main` branch.
-
-To disable: Comment out the `nightly-builds` workflow in `.circleci/config.yml`.
-
 ### Monitoring Builds
 
 1. Go to CircleCI dashboard
 2. Click on your pipeline
-3. View parallel jobs:
-   - `build-linux`
-   - `build-macos`
+3. View jobs:
    - `build-windows`
    - `collect-artifacts`
 4. Click on each job to see logs
@@ -236,9 +243,11 @@ src-tauri/target/release/bundle/
 ├── dmg/           # macOS: Disk images
 │   └── Trova IMS_0.1.2_x64.dmg
 ├── msi/           # Windows: MSI installers
-│   └── Trova IMS_0.1.2_x64_en-US.msi
+│   ├── Trova IMS_0.1.2_x64_en-US-windows-slim.msi
+│   └── Trova IMS_0.1.2_x64_en-US-windows-bundled.msi
 └── nsis/          # Windows: NSIS installers
-    └── Trova IMS_0.1.2_x64-setup.exe
+    ├── Trova IMS_0.1.2_x64-setup-windows-slim.exe
+    └── Trova IMS_0.1.2_x64-setup-windows-bundled.exe
 ```
 
 ### Installer Types
@@ -258,9 +267,13 @@ src-tauri/target/release/bundle/
 Typical installer sizes:
 - **Linux (.deb/.rpm)**: 150-200 MB
 - **macOS (.dmg)**: 180-250 MB
-- **Windows (.msi/.exe)**: 160-220 MB
+- **Windows slim (.msi/.exe)**: 160-220 MB
+- **Windows bundled (.msi/.exe)**: larger; includes Node.js and offline WebView2
 
 The standalone Next.js server + Rust binary account for most of the size.
+Use the bundled Windows installer when startup reliability matters more than
+download size. Use the slim installer when the target machine already has
+Node.js and WebView2 available.
 
 ## Troubleshooting
 

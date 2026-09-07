@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 // Trova IMS desktop shell.
 //
 // Two run modes:
@@ -5,7 +7,7 @@
 //     http://localhost:3000 directly. This file does nothing extra beyond
 //     single-instance handling.
 //   - Packaged app: spawns the bundled .next/standalone/server.js, polls
-//     until it accepts connections, then navigates away from the splash.
+//     its desktop health endpoint, then navigates away from the splash.
 //
 // Process lifecycle: the spawned Node server is tracked in managed state
 // and explicitly killed when the app exits (RunEvent::ExitRequested). The
@@ -16,8 +18,11 @@
 // code the next time the app launches.
 
 use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -31,32 +36,211 @@ use tauri::{Manager, Url};
 /// If this port changes, that file needs the matching update or the
 /// frontend's Tauri detection silently breaks.
 const SERVER_PORT: u16 = 47821;
+const STARTUP_ATTEMPTS: u16 = 200;
+const STARTUP_POLL_MS: u64 = 150;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn hide_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+}
+
+#[tauri::command]
+fn open_main_devtools(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window is not available.".to_string())?;
+    window.open_devtools();
+    Ok(())
+}
+
+struct HealthStatus {
+    healthy: bool,
+    status_line: String,
+    body: String,
+}
 
 /// Holds the spawned Node server so it can be killed on app exit instead
 /// of being left as an orphaned background process.
 struct ServerProcess(Mutex<Option<Child>>);
 
-/// Locate the system `node` binary.
-///
-/// Windows packaged apps don't reliably inherit the interactive shell's
-/// PATH. `where.exe` / `which` query the system search path independently
-/// of the inherited process PATH, so they find Node even when a bare
-/// `Command::new("node")` would fail.
-fn find_node() -> String {
+/// Replace older native app processes before the single-instance plugin runs.
+/// This is intentionally scoped to the Trova IMS executable name so an update
+/// can recover from an older build without touching unrelated applications.
+#[cfg(windows)]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id();
+    let mut command = Command::new("tasklist");
+    command.args(["/FI", "IMAGENAME eq trova-ims.exe", "/FO", "CSV", "/NH"]);
+    hide_console(&mut command);
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("[trova-ims] Could not inspect previous instances: {err}");
+            return;
+        }
+    };
+
+    let processes = String::from_utf8_lossy(&output.stdout);
+    for line in processes.lines() {
+        let Some(pid_text) = line.split(',').nth(1) else {
+            continue;
+        };
+        let pid_text = pid_text.trim_matches('"');
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+        if pid == current_pid {
+            continue;
+        }
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let mut command = Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        hide_console(&mut command);
+        let _ = command.output();
+    }
+
+    // Give Windows a moment to release the old WebView and local server port
+    // before the new instance initializes its Tauri single-instance mutex.
+    thread::sleep(Duration::from_millis(150));
+    terminate_orphaned_server();
+}
+
+#[cfg(not(windows))]
+fn terminate_previous_instances() {
+    let current_pid = std::process::id().to_string();
+    let output = match Command::new("pgrep").args(["-x", "trova-ims"]).output() {
+        Ok(output) => output,
+        Err(_) => return,
+    };
+
+    for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
+        let pid_text = pid_text.trim();
+        if pid_text.is_empty() || pid_text == current_pid {
+            continue;
+        }
+        let Ok(pid) = pid_text.parse::<u32>() else {
+            continue;
+        };
+
+        eprintln!("[trova-ims] Replacing previous app instance (pid {pid})");
+        let _ = Command::new("kill").args(["-TERM", pid_text]).output();
+    }
+
+    thread::sleep(Duration::from_millis(150));
+    terminate_orphaned_server();
+}
+
+/// Kill a leftover standalone server from an earlier app process. The Tauri
+/// process normally owns and cleans up its child, but a forced termination can
+/// orphan Node while leaving the fixed server port occupied. Restricting this
+/// to Trova's private port avoids touching unrelated Node applications.
+#[cfg(windows)]
+fn terminate_orphaned_server() -> bool {
+    let mut command = Command::new("netstat");
+    command.args(["-ano", "-p", "tcp"]);
+    hide_console(&mut command);
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("[trova-ims] Could not inspect the desktop server port: {err}");
+            return false;
+        }
+    };
+
+    let port_suffix = format!(":{SERVER_PORT}");
+    let mut cleared = true;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 5
+            || fields[0] != "TCP"
+            || !fields[1].ends_with(&port_suffix)
+            || fields[3] != "LISTENING"
+        {
+            continue;
+        }
+
+        let Ok(pid) = fields[4].parse::<u32>() else {
+            continue;
+        };
+        eprintln!("[trova-ims] Replacing orphaned local server (pid {pid})");
+        let mut command = Command::new("taskkill");
+        command.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        hide_console(&mut command);
+        let result = command.output();
+        if !matches!(result, Ok(output) if output.status.success()) {
+            cleared = false;
+        }
+    }
+
+    cleared
+}
+
+#[cfg(not(windows))]
+fn terminate_orphaned_server() -> bool {
+    let output = match Command::new("lsof")
+        .args(["-tiTCP:47821", "-sTCP:LISTEN"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return false,
+    };
+
+    let mut cleared = true;
+    for pid_text in String::from_utf8_lossy(&output.stdout).lines() {
+        let pid_text = pid_text.trim();
+        if pid_text.is_empty() {
+            continue;
+        }
+        eprintln!("[trova-ims] Replacing orphaned local server (pid {pid_text})");
+        let result = Command::new("kill").args(["-TERM", pid_text]).output();
+        if !matches!(result, Ok(output) if output.status.success()) {
+            cleared = false;
+        }
+    }
+
+    cleared
+}
+
+/// Locate the bundled Node.js binary when one exists, otherwise use the
+/// system installation. Lean packages intentionally rely on the user's
+/// existing Node.js installation instead of shipping another copy.
+fn find_node(resource_dir: &std::path::Path) -> String {
+    let bundled = resource_dir
+        .join("node-runtime")
+        .join(if cfg!(target_os = "windows") {
+            "node.exe"
+        } else {
+            "bin/node"
+        });
+    if bundled.exists() {
+        return bundled.to_string_lossy().into_owned();
+    }
+
+    // Locate Node independently of the inherited PATH. This is used by lean
+    // release installers, which intentionally do not contain a Node runtime.
     #[cfg(target_os = "windows")]
     let (search_bin, search_arg) = ("where.exe", "node");
     #[cfg(not(target_os = "windows"))]
     let (search_bin, search_arg) = ("which", "node");
 
-    Command::new(search_bin)
-        .arg(search_arg)
+    let mut command = Command::new(search_bin);
+    command.arg(search_arg);
+    hide_console(&mut command);
+    command
         .output()
         .ok()
         .and_then(|o| {
             if o.status.success() {
-                String::from_utf8(o.stdout).ok().map(|s| {
-                    s.lines().next().unwrap_or("node").trim().to_string()
-                })
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.lines().next().unwrap_or("node").trim().to_string())
             } else {
                 None
             }
@@ -81,15 +265,138 @@ fn strip_verbatim_prefix(path: &std::path::Path) -> std::path::PathBuf {
     path.to_path_buf()
 }
 
+fn local_server_request(path: &str) -> Result<HealthStatus, String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", SERVER_PORT))
+        .map_err(|err| format!("could not connect to local server: {err}"))?;
+    let timeout = Some(Duration::from_secs(2));
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+
+    let request = format!(
+        "GET {path} HTTP/1.1\r\n\
+         Host: 127.0.0.1:{SERVER_PORT}\r\n\
+         Accept: application/json\r\n\
+         Connection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|err| format!("could not write health request: {err}"))?;
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .map_err(|err| format!("could not read health response: {err}"))?;
+
+    let response = String::from_utf8_lossy(&response);
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .unwrap_or_else(|| (response.as_ref(), ""));
+    let status_line = headers.lines().next().unwrap_or("").to_string();
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok());
+
+    let expected_version = format!("\"version\":\"{}\"", env!("CARGO_PKG_VERSION"));
+    let healthy =
+        status == Some(200) && body.contains("\"ok\":true") && body.contains(&expected_version);
+
+    Ok(HealthStatus {
+        healthy,
+        status_line,
+        body: body.trim().to_string(),
+    })
+}
+
+/// Best-effort request asking the local server to flush any pending sales
+/// export immediately, used as part of the main-window close sequence so a
+/// backup exists even if the store closes the app between scheduled weekly
+/// exports. Never blocks shutdown on failure — errors are logged and
+/// swallowed, since a missed close-time export is not worth hanging the app
+/// on or losing the customer-display/server cleanup that follows it.
+fn trigger_export_now() {
+    let mut stream = match TcpStream::connect(("127.0.0.1", SERVER_PORT)) {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("[trova-ims] Skipping close-time export, could not reach local server: {err}");
+            return;
+        }
+    };
+    let timeout = Some(Duration::from_secs(5));
+    let _ = stream.set_read_timeout(timeout);
+    let _ = stream.set_write_timeout(timeout);
+
+    let request = format!(
+        "POST /api/desktop/export-now HTTP/1.1\r\n\
+         Host: 127.0.0.1:{SERVER_PORT}\r\n\
+         Content-Length: 0\r\n\
+         Connection: close\r\n\r\n"
+    );
+    if let Err(err) = stream.write_all(request.as_bytes()) {
+        eprintln!("[trova-ims] Close-time export request failed to send: {err}");
+        return;
+    }
+
+    let mut response = Vec::new();
+    if let Err(err) = stream.read_to_end(&mut response) {
+        eprintln!("[trova-ims] Close-time export response failed to read: {err}");
+        return;
+    }
+
+    let status_line = String::from_utf8_lossy(&response)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    eprintln!("[trova-ims] Close-time export request completed: {status_line}");
+}
+
+fn show_startup_error(handle: &tauri::AppHandle, message: &str, log_path: &Path) {
+    let message = serde_json::to_string(message)
+        .unwrap_or_else(|_| "\"Trova IMS could not start.\"".to_string());
+    let log_path = serde_json::to_string(&log_path.display().to_string())
+        .unwrap_or_else(|_| "\"server.log\"".to_string());
+    let script = format!(
+        r#"
+        (() => {{
+          const message = {message};
+          const logPath = {log_path};
+          const render = () => {{
+            if (window.trovaStartupError) {{
+              window.trovaStartupError(message, logPath);
+              return;
+            }}
+            const wrap = document.querySelector('.wrap') || document.body;
+            if (!wrap) return;
+            wrap.classList?.add('error');
+            wrap.innerHTML = '<h1>Trova IMS could not start</h1><p class="message"></p><div class="log"></div>';
+            wrap.querySelector('.message').textContent = message;
+            wrap.querySelector('.log').textContent = 'Server log: ' + logPath;
+          }};
+          if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', render, {{ once: true }});
+          }} else {{
+            render();
+          }}
+        }})();
+        "#
+    );
+
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.eval(script);
+    }
+}
+
 fn spawn_local_server(
     resource_dir: &std::path::Path,
     data_dir: &std::path::Path,
     log_path: &std::path::Path,
+    documents_dir: Option<&std::path::Path>,
 ) -> std::io::Result<Child> {
     let standalone_dir = strip_verbatim_prefix(&resource_dir.join("standalone"));
-    let server_js      = standalone_dir.join("server.js");
-    let data_dir        = strip_verbatim_prefix(data_dir);
-    let node_bin        = find_node();
+    let server_js = standalone_dir.join("server.js");
+    let data_dir = strip_verbatim_prefix(data_dir);
+    let node_bin = find_node(resource_dir);
 
     eprintln!("[trova-ims] node binary:   {node_bin}");
     eprintln!("[trova-ims] server script: {}", server_js.display());
@@ -106,51 +413,73 @@ fn spawn_local_server(
         ));
     }
 
-    let log_file  = OpenOptions::new().create(true).append(true).open(log_path)?;
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
     let log_clone = log_file.try_clone()?;
 
     let mut cmd = Command::new(&node_bin);
     cmd.arg(&server_js)
         .current_dir(&standalone_dir)
-        .env("PORT",               SERVER_PORT.to_string())
-        .env("HOSTNAME",           "127.0.0.1")
-        .env("DESKTOP_MODE",       "true")
-        .env("TROVA_DATA_DIR",     &data_dir)
+        .env("PORT", SERVER_PORT.to_string())
+        .env("HOSTNAME", "127.0.0.1")
+        .env("DESKTOP_MODE", "true")
+        .env("TROVA_DATA_DIR", &data_dir)
+        .env("TROVA_DESKTOP_VERSION", env!("CARGO_PKG_VERSION"))
         .env("BETTER_AUTH_SECRET", "desktop-mode-not-used")
-        .env("PATH",               std::env::var("PATH").unwrap_or_default())
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_clone));
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+    if let Some(documents_dir) = documents_dir {
+        cmd.env(
+            "TROVA_DOCUMENTS_DIR",
+            strip_verbatim_prefix(documents_dir),
+        );
     }
+
+    hide_console(&mut cmd);
 
     cmd.spawn()
 }
 
 /// Kill the tracked server process, if any. Called on app exit.
 fn kill_server(app: &tauri::AppHandle) {
+    let mut killed_server = false;
     if let Some(state) = app.try_state::<ServerProcess>() {
         if let Ok(mut guard) = state.0.lock() {
             if let Some(mut child) = guard.take() {
-                eprintln!("[trova-ims] Shutting down local server (pid {})", child.id());
+                killed_server = true;
+                eprintln!(
+                    "[trova-ims] Shutting down local server (pid {})",
+                    child.id()
+                );
                 let _ = child.kill();
                 let _ = child.wait();
             }
         }
     }
+
+    // Windows may terminate the Node child without allowing Node's exit
+    // handlers to run. Remove the app-specific lock after the child has
+    // exited so the next launch can start normally.
+    if killed_server {
+        if let Ok(data_dir) = app.path().app_data_dir() {
+            let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+            let _ = std::fs::remove_file(data_dir.join("trova-test.db.lock"));
+        }
+    }
 }
 
 fn main() {
+    terminate_previous_instances();
+
     let mut builder = tauri::Builder::default().manage(ServerProcess(Mutex::new(None)));
 
-    // Must be registered first — see Tauri's single-instance docs. On a
-    // second launch attempt, the closure below runs in the *original*
-    // instance instead of a new process being spawned, so we just focus
-    // the existing window rather than starting a second competing server.
+    // Keep the plugin as a final race guard. Startup replacement above handles
+    // normal upgrades/relaunches; this prevents two new copies from starting
+    // simultaneously after both inspect the process list.
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -159,10 +488,44 @@ fn main() {
                 let _ = window.unminimize();
             }
         }));
+        builder = builder.plugin(tauri_plugin_thermal_printer::init());
+        builder = builder.plugin(tauri_plugin_opener::init());
     }
 
     let app = builder
+        .invoke_handler(tauri::generate_handler![open_main_devtools])
         .setup(|app| {
+            // Registered unconditionally (dev and packaged builds alike) since
+            // the customer-display window is a frontend feature independent of
+            // is_dev(). Without this, closing "main" while "customer-display"
+            // is still open does not exit the app at all — Tauri only fires
+            // app-exit once *every* window has closed — leaving the display
+            // window and the local server running headless, which is what
+            // then triggers the force-kill-and-relaunch crash reported above.
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                let closing = AtomicBool::new(false);
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if closing.swap(true, Ordering::SeqCst) {
+                            // Cleanup already in flight from a previous close
+                            // request; let this one proceed normally instead
+                            // of stacking another teardown on top of it.
+                            return;
+                        }
+                        api.prevent_close();
+                        let handle = handle.clone();
+                        thread::spawn(move || {
+                            trigger_export_now();
+                            if let Some(display) = handle.get_webview_window("customer-display") {
+                                let _ = display.close();
+                            }
+                            handle.exit(0);
+                        });
+                    }
+                });
+            }
+
             if tauri::is_dev() {
                 return Ok(());
             }
@@ -177,14 +540,27 @@ fn main() {
                 .app_data_dir()
                 .expect("failed to resolve app data directory");
 
-            std::fs::create_dir_all(&data_dir)
-                .expect("failed to create app data directory");
+            std::fs::create_dir_all(&data_dir).expect("failed to create app data directory");
+
+            // Startup cleanup has already inspected Trova's private port. Any
+            // remaining app lock can be reclaimed only when that inspection
+            // succeeded, so a missing diagnostic tool cannot remove a live lock.
+            if terminate_orphaned_server() {
+                let _ = std::fs::remove_file(data_dir.join("trova.db.lock"));
+                let _ = std::fs::remove_file(data_dir.join("trova-test.db.lock"));
+            }
 
             let log_path = data_dir.join("server.log");
+            let documents_dir = app.path().document_dir().ok();
 
-            match spawn_local_server(&resource_dir, &data_dir, &log_path) {
+            match spawn_local_server(&resource_dir, &data_dir, &log_path, documents_dir.as_deref()) {
                 Err(err) => {
                     eprintln!("[trova-ims] Failed to start local server: {err}");
+                    show_startup_error(
+                        app.handle(),
+                        &format!("The local desktop server could not start: {err}"),
+                        &log_path,
+                    );
                     return Ok(());
                 }
                 Ok(child) => {
@@ -193,24 +569,44 @@ fn main() {
             }
 
             let handle = app.handle().clone();
+            let startup_log_path = log_path.clone();
             thread::spawn(move || {
-                for attempt in 0..200 {
-                    if TcpStream::connect(("127.0.0.1", SERVER_PORT)).is_ok() {
-                        eprintln!("[trova-ims] Server ready after ~{}ms.", attempt * 150);
-                        if let Some(window) = handle.get_webview_window("main") {
-                            let url = Url::parse(&format!("http://127.0.0.1:{SERVER_PORT}"))
+                let mut last_probe = String::from("health endpoint did not respond");
+                for attempt in 0..STARTUP_ATTEMPTS {
+                    match local_server_request("/api/desktop/health") {
+                        Ok(status) if status.healthy => {
+                            eprintln!(
+                                "[trova-ims] Server health ready after ~{}ms.",
+                                attempt as u64 * STARTUP_POLL_MS
+                            );
+                            if let Some(window) = handle.get_webview_window("main") {
+                                let url = Url::parse(&format!(
+                                    "http://127.0.0.1:{SERVER_PORT}/dashboard"
+                                ))
                                 .expect("invalid local server URL");
-                            let _ = window.navigate(url);
+                                let _ = window.navigate(url);
+                            }
+                            return;
                         }
-                        return;
+                        Ok(status) => {
+                            last_probe = format!("{} {}", status.status_line, status.body);
+                        }
+                        Err(err) => {
+                            last_probe = err;
+                        }
                     }
-                    thread::sleep(Duration::from_millis(150));
+                    thread::sleep(Duration::from_millis(STARTUP_POLL_MS));
                 }
+
+                let message =
+                    format!("Trova IMS could not finish starting. Last health check: {last_probe}");
                 eprintln!(
-                    "[trova-ims] Server did not become ready on port {SERVER_PORT} within 30 s.\n\
-                     Check the server log at the app data directory for the exact error.\n\
-                     Is Node.js installed?"
+                    "[trova-ims] Server did not become healthy on port {SERVER_PORT} within 30 s.\n\
+                     Check the server log at {} for the exact error.\n\
+                     {message}",
+                    startup_log_path.display()
                 );
+                show_startup_error(&handle, &message, &startup_log_path);
             });
 
             Ok(())

@@ -81,7 +81,7 @@ export default function Hero() {
               className="text-[11px] font-semibold uppercase tracking-[0.12em]"
               style={{ color: 'var(--accent-primary)' }}
             >
-              Inventory Management System
+              Desktop-First Inventory Management
             </span>
           </div>
 
@@ -93,14 +93,14 @@ export default function Hero() {
               color: 'var(--text-primary)',
             }}
           >
-            Know your
+            Powerful inventory.
             <br />
-            store,{' '}
+            Works{' '}
             <span
               className="italic"
               style={{ color: 'var(--accent-primary)' }}
             >
-              always.
+              offline.
             </span>
           </h1>
 
@@ -113,34 +113,20 @@ export default function Hero() {
               maxWidth: 400,
             }}
           >
-            Trova tracks every item, every batch, every{' '}
-            <span
-              className="font-semibold tabular-nums"
-              style={{
-                color: 'var(--accent-primary)',
-                display: 'inline-block',
-                minWidth: '1.2em',
-                textAlign: 'center',
-              }}
-              aria-live="polite"
-              aria-label={CURRENCIES[currIdx].name}
-            >
-              {CURRENCIES[currIdx].symbol}
-            </span>{' '}
-            from the moment goods arrive to the moment a receipt prints.
+            Trova runs on your desktop — no internet required, no cloud needed. Full control. Complete offline. Fast and local.
           </p>
 
           {/* CTA row */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Link
-              href="/sign-up"
+              href="/sign-in"
               className="inline-flex items-center gap-2.5 text-white font-semibold px-6 py-3.5 rounded-xl transition-opacity duration-150 hover:opacity-90 whitespace-nowrap"
               style={{
                 backgroundColor: 'var(--accent-primary)',
                 fontSize: 14,
               }}
             >
-              Start for free
+              Experience Demo
               <svg
                 width="14"
                 height="14"
@@ -192,7 +178,7 @@ export default function Hero() {
               style={{ backgroundColor: 'var(--positive)' }}
               aria-hidden="true"
             />
-            No credit card required · Free to start
+            No account needed to try · Free to use
           </div>
         </div>
 

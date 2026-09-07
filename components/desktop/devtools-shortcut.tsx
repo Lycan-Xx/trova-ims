@@ -1,0 +1,31 @@
+'use client'
+
+import * as React from 'react'
+
+const DEVTOOLS_SHORTCUT = 'F12'
+
+export function DevToolsShortcut() {
+  React.useEffect(() => {
+    function isTauriEnv(): boolean {
+      return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+    }
+
+    async function handleKeyDown(event: KeyboardEvent) {
+      if (!isTauriEnv()) return
+      if (!event.ctrlKey || !event.shiftKey || (event.key !== DEVTOOLS_SHORTCUT && event.code !== DEVTOOLS_SHORTCUT)) return
+
+      event.preventDefault()
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('open_main_devtools')
+      } catch {
+        // Keep the technician shortcut silent for normal users when DevTools is unavailable.
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [])
+
+  return null
+}

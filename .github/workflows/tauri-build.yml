@@ -13,6 +13,14 @@ on:
           - release
           - debug
         default: release
+      windows_variant:
+        description: "Windows package variant"
+        type: choice
+        options:
+          - slim
+          - bundled
+          - all
+        default: slim
 
 jobs:
   build:
@@ -29,9 +37,7 @@ jobs:
           - platform: windows-latest
             name: windows
             bundles: msi,nsis
-          - platform: macos-latest
-            name: macos
-            bundles: dmg
+          # macOS builds are currently disabled to conserve CI resources.
 
     runs-on: ${{ matrix.platform }}
     # Safety net: Rust release builds + Tauri bundling normally finish
@@ -49,6 +55,7 @@ jobs:
     # actual runtime database connection. Override with repo secrets of
     # the same names if a build should embed different values.
     env:
+      DEBIAN_FRONTEND: noninteractive
       DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgres://build:build@localhost:5432/build' }}
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'build-time-placeholder-not-used-for-signing' }}
 
@@ -58,7 +65,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Set up Rust
@@ -78,8 +85,9 @@ jobs:
           # hours on silent timeouts instead of failing fast. Point at the
           # main Ubuntu archive directly before updating.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update -o Acquire::Retries=3
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            -o Dpkg::Options::=--force-confold \
             libwebkit2gtk-4.1-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
@@ -100,14 +108,15 @@ jobs:
         # --bundles restricts output to the formats that work on each
         # runner without extra setup (no AppImage on Linux CI).
         run: >
-          npx tauri build
+          npm run desktop:build --
+          --variant ${{ matrix.name == 'windows' && inputs.windows_variant || 'slim' }}
           ${{ inputs.profile == 'debug' && '--debug' || '' }}
           --bundles ${{ matrix.bundles }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: trova-ims-${{ matrix.name }}-${{ inputs.profile }}
+          name: trova-ims-${{ matrix.name }}-${{ matrix.name == 'windows' && inputs.windows_variant || 'slim' }}-${{ inputs.profile }}
           path: |
             src-tauri/target/${{ inputs.profile }}/bundle/**
           if-no-files-found: error

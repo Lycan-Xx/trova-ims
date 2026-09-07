@@ -1,9 +1,15 @@
 import { redirect } from 'next/navigation'
 import { requireOwner } from '@/lib/auth'
+import { IS_DESKTOP } from '@/lib/db'
 import { getStoreSettings } from '@/app/actions/settings'
 import { StoreSettingsForm } from '@/components/settings/store-settings-form'
 import { TeamManagement } from '@/components/settings/team-management'
 import { RestartTutorialButton } from '@/components/settings/restart-tutorial-button'
+import { PrinterSetup } from '@/components/settings/printer-setup'
+import { CustomerDisplaySetup } from '@/components/customer-display/customer-display-setup'
+import { TestModeToggle } from '@/components/settings/test-mode-toggle'
+import { ExternalLink } from '@/components/ui/external-link'
+import packageJson from '@/package.json'
 
 export const metadata = { title: 'Settings — StockSmart' }
 
@@ -42,7 +48,25 @@ export default async function SettingsPage() {
         </section>
       )}
 
-      {/* Section B — Team Management */}
+      {/* Section B — Printer Setup (desktop only — PrinterSetup self-guards) */}
+      {isOwner && (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+            Printer Setup
+          </h2>
+          <PrinterSetup />
+        </section>
+      )}
+
+      {isOwner && <CustomerDisplaySetup />}
+
+      {/* Section C — Team Management */}
       {isOwner && (
         <section>
           <TeamManagement isOwner={isOwner} />
@@ -72,6 +96,19 @@ export default async function SettingsPage() {
         </section>
       )}
 
+      {/* Section D — Test Mode (desktop only) */}
+      {isOwner && IS_DESKTOP && (
+        <section
+          className="rounded-xl p-6"
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--accent-yellow)',
+          }}
+        >
+          <TestModeToggle />
+        </section>
+      )}
+
       {/* Non-owner: read-only note */}
       {!isOwner && (
         <div
@@ -86,11 +123,75 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      {/* Legal Links */}
+      <section
+        className="rounded-xl p-6"
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+        }}
+      >
+        <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+          About & Support
+        </h2>
+        <div className="grid gap-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <div>
+            <p className="font-medium" style={{ color: 'var(--text-primary)' }}>Trova IMS</p>
+            <p>Version {process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version}</p>
+          </div>
+          <p>
+            Built by{' '}
+            <ExternalLink
+              href="https://lycanforge.com.ng"
+              className="font-bold hover:underline"
+              style={{ color: '#f59e0b' }}
+            >
+              LycanForge
+            </ExternalLink>
+          </p>
+          <div>
+            <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Support</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <ExternalLink href="mailto:client@lycanforge.com.ng" className="hover:text-white transition-colors">
+                client@lycanforge.com.ng
+              </ExternalLink>
+              <ExternalLink
+                href="https://wa.me/2347058392920"
+                className="hover:text-white transition-colors"
+              >
+                +234 705 839 2920 on WhatsApp
+              </ExternalLink>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>Legal</p>
+            <p className="leading-relaxed">
+              Copyright LycanForge. All rights reserved. This software is provided for use by the
+              authorized recipient pending the formal Trova IMS End User License Agreement (EULA).
+              Unauthorized redistribution, resale, copying, or distribution without written
+              permission from LycanForge is prohibited.
+            </p>
+          </div>
+          <ExternalLink
+            href="https://trova.lycanforge.com.ng/privacy"
+            className="w-fit hover:text-white transition-colors"
+          >
+            Privacy Policy
+          </ExternalLink>
+        </div>
+      </section>
+
+      {/* Legal + version footer */}
       <div className="flex items-center justify-center gap-4 py-8 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+        <ExternalLink
+          href="https://trova.lycanforge.com.ng/privacy"
+          className="hover:text-white transition-colors"
+        >
+          Privacy Policy
+        </ExternalLink>
         <span>•</span>
         <span>© {new Date().getFullYear()} Trova</span>
+        <span>•</span>
+        <span>v{process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version}</span>
       </div>
     </main>
   )

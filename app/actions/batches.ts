@@ -117,12 +117,13 @@ export async function createBatchSession(formData: {
           const lineLabel = formData.lines.length > 1 ? `Line ${i + 1}: ` : ''
 
           const productRes = await client.query(
-            'SELECT id FROM products WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
+            'SELECT id, track_inventory FROM products WHERE id = $1 AND store_id = $2 AND is_active = true LIMIT 1',
             [line.productId, user.store_id],
           )
           if (productRes.rows.length === 0) {
             throw new Error(`${lineLabel}product not found or inactive.`)
           }
+          const product = productRes.rows[0] as Pick<Product, 'id' | 'track_inventory'>
 
           let isConsignment = line.isConsignment ?? false
           if (line.vendorId) {
@@ -183,6 +184,15 @@ export async function createBatchSession(formData: {
             ],
           )
           createdBatches.push(insertRes.rows[0] as Batch)
+
+          if (!product.track_inventory) {
+            await client.query(
+              `UPDATE products
+               SET track_inventory = true
+               WHERE id = $1 AND store_id = $2`,
+              [line.productId, user.store_id],
+            )
+          }
         }
 
         await client.query('COMMIT')
@@ -330,6 +340,7 @@ export async function getBatchById(
          p.unit           AS product_unit,
          p.selling_price  AS product_selling_price,
          p.reorder_level  AS product_reorder_level,
+         p.track_inventory AS product_track_inventory,
          v.name           AS vendor_name,
          v.type           AS vendor_type,
          v.contact        AS vendor_contact
@@ -382,6 +393,7 @@ export async function getBatchById(
       unit: row.product_unit as Product['unit'],
       selling_price: row.product_selling_price as string,
       reorder_level: row.product_reorder_level as number,
+      track_inventory: row.product_track_inventory as boolean,
       is_active: true,
       created_at: '',
     } satisfies Product
@@ -423,7 +435,7 @@ export async function getStockSummary(): Promise<
          COALESCE(SUM(b.qty_remaining), 0)::int AS current_stock
        FROM products p
        LEFT JOIN batches b ON b.product_id = p.id
-       WHERE p.store_id = $1 AND p.is_active = true
+       WHERE p.store_id = $1 AND p.is_active = true AND p.track_inventory = true
        GROUP BY p.id, p.name, p.sku, p.reorder_level
        ORDER BY p.name ASC`,
       [user.store_id],

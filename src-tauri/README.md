@@ -7,9 +7,10 @@ Next.js app. It runs fully offline: the packaged app spawns the app's
 own server as a local process, backed by a local PGlite database
 (`lib/db/desktop-init.ts`) instead of Aurora, with no sign-in required
 (`DESKTOP_MODE=true` bypasses Better Auth entirely — see `lib/auth.ts`
-and `middleware.ts`). Per-OS installers are built by
-`.github/workflows/tauri-build.yml` (manual trigger, from the Actions
-tab) or `.github/workflows/release.yml` (automatic, on tagged releases).
+and `middleware.ts`). Windows release installers are built automatically
+by `.github/workflows/release.yml` when release-please creates a release.
+Linux/macOS desktop packages are manual-only through
+`.github/workflows/tauri-build.yml`.
 
 ## Testing locally during development
 
@@ -57,28 +58,35 @@ the window or press Ctrl+C.
 # Needs DATABASE_URL + BETTER_AUTH_SECRET in the environment
 # (any truthy values work — see the comment in the CI workflow)
 npm run desktop:build
+
+# Windows variants
+npm run desktop:build -- --variant slim --bundles msi,nsis
+npm run desktop:build -- --variant bundled --bundles msi,nsis
+npm run desktop:build -- --variant all --bundles msi,nsis
 ```
 
 Or trigger it from GitHub Actions tab → **Build Desktop App (Tauri)**
 → **Run workflow**. Installers appear in the workflow run's Artifacts
 section once the job finishes (~10–20 min first run, faster on cache).
 
-## Known limitations
+## Package variants
 
-- **Requires system Node.js** in the packaged-app path (the release
-  build spawns `node server.js` via the OS binary). Bundling a Node
-  runtime as a proper Tauri sidecar would remove this dependency —
-  not yet done.
+- **Windows slim**: smaller package; uses system Node.js and the WebView2
+  bootstrapper.
+- **Windows bundled**: larger package; includes the pinned Node.js runtime
+  and offline WebView2 installer. This is the reliability-first installer.
 
 ## Troubleshooting a stuck / broken launch
 
-If the app shows a Tauri error page ("This page couldn't load") or the
-console log shows `EADDRINUSE: address already in use 127.0.0.1:47821`,
-an orphaned server process from a previous install is still running
-and holding the port. As of the process-lifecycle fix, the app kills
-its own server on exit and won't let a second instance launch a
-competing one — but if you're troubleshooting a build from before that
-fix landed, clear any leftovers manually:
+If the app cannot start the local server or `/api/desktop/health` fails,
+the splash screen stays open and shows the server log path. If the app
+shows a Tauri error page ("This page couldn't load") or the console log
+shows `EADDRINUSE: address already in use 127.0.0.1:47821`, an orphaned
+server process from a previous install is still running and holding the
+port. As of the process-lifecycle fix, the app kills its own server on
+exit and won't let a second instance launch a competing one — but if
+you're troubleshooting a build from before that fix landed, clear any
+leftovers manually:
 
 **Windows** — Task Manager → find any `node.exe` processes → End Task.
 Or in PowerShell: `Get-Process node | Stop-Process -Force`

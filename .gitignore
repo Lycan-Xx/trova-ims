@@ -25,6 +25,10 @@ yarn-error.log*
 # tauri
 /src-tauri/target
 /src-tauri/gen
+/.trova-runtime/node-v*.zip
+/.trova-runtime/extract
+/.trova-runtime/node/*
+!/.trova-runtime/node/.gitkeep
 
 # typescript
 *.tsbuildinfo

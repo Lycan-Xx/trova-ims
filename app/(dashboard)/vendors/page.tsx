@@ -2,6 +2,12 @@ import { getVendors } from '@/app/actions/vendors'
 import { VendorList } from '@/components/vendors/vendor-list'
 import type { GetVendorsFilters } from '@/app/actions/vendors'
 
+// Ensure the page is never statically cached — router.refresh() in the
+// slide-over panel re-fetches from the server to pick up newly created
+// or updated vendors. Without this directive Next.js may serve a cached
+// render and the new vendor appears to be missing after "created" toast.
+export const dynamic = 'force-dynamic'
+
 interface PageProps {
   searchParams: Promise<{ type?: string; search?: string }>
 }

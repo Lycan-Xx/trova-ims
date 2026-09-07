@@ -12,6 +12,10 @@ parameters:
     type: enum
     enum: ["release", "debug"]
     default: "release"
+  windows-variant:
+    type: enum
+    enum: ["slim", "bundled", "all"]
+    default: "all"
 
 # Define executors for different platforms
 executors:
@@ -20,15 +24,8 @@ executors:
       image: ubuntu-2204:current
     resource_class: large
     environment:
+      DEBIAN_FRONTEND: noninteractive
       # Placeholder secrets - override with CircleCI project environment variables
-      DATABASE_URL: postgres://build:build@localhost:5432/build
-      BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
-
-  macos-builder:
-    macos:
-      xcode: 15.3.0
-    resource_class: macos.m1.large.gen1
-    environment:
       DATABASE_URL: postgres://build:build@localhost:5432/build
       BETTER_AUTH_SECRET: build-time-placeholder-not-used-for-signing
 
@@ -68,6 +65,7 @@ commands:
       - run:
           name: Install Rust
           command: |
+            export DEBIAN_FRONTEND=noninteractive
             if ! command -v rustc &> /dev/null; then
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
               echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> $BASH_ENV
@@ -89,7 +87,7 @@ commands:
             # Retry apt-get update up to 3 times
             for i in 1 2 3; do
               echo "Attempt $i: Updating package lists..."
-              if sudo apt-get update; then
+              if sudo env DEBIAN_FRONTEND=noninteractive apt-get update -o Acquire::Retries=3; then
                 break
               elif [ $i -lt 3 ]; then
                 echo "Attempt $i failed, retrying..."
@@ -100,7 +98,8 @@ commands:
               fi
             done
             
-            sudo apt-get install -y \
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              -o Dpkg::Options::=--force-confold \
               libwebkit2gtk-4.1-dev \
               libgtk-3-dev \
               libayatana-appindicator3-dev \
@@ -134,7 +133,7 @@ commands:
             echo "Profile: << parameters.profile >>"
             
             set -e  # Exit on any error
-            npx tauri build ${DEBUG_FLAG} --bundles << parameters.bundles >> || {
+            npm run desktop:build -- ${DEBUG_FLAG} --bundles << parameters.bundles >> || {
               echo "Build failed, checking for common issues..."
               exit 1
             }
@@ -147,19 +146,18 @@ jobs:
     steps:
       - checkout
       - node/install:
-          node-version: "20"
+          node-version: "22"
       - install-rust
       - install-linux-deps
       - install-node-deps
       - restore_cache:
           keys:
-            - rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-linux-
+            - rust-build-linux-safe-{{ checksum "src-tauri/Cargo.lock" }}
       - build-tauri-app:
           bundles: "deb,rpm"
           profile: << pipeline.parameters.build-profile >>
       - save_cache:
-          key: rust-build-linux-{{ checksum "src-tauri/Cargo.lock" }}
+          key: rust-build-linux-safe-{{ checksum "src-tauri/Cargo.lock" }}
           paths:
             - src-tauri/target
       - store_artifacts:
@@ -171,33 +169,6 @@ jobs:
             - << pipeline.parameters.build-profile >>/bundle/deb
             - << pipeline.parameters.build-profile >>/bundle/rpm
 
-  build-macos:
-    executor: macos-builder
-    steps:
-      - checkout
-      - node/install:
-          node-version: "20"
-      - install-rust
-      - install-node-deps
-      - restore_cache:
-          keys:
-            - rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-macos-
-      - build-tauri-app:
-          bundles: "dmg"
-          profile: << pipeline.parameters.build-profile >>
-      - save_cache:
-          key: rust-build-macos-{{ checksum "src-tauri/Cargo.lock" }}
-          paths:
-            - src-tauri/target
-      - store_artifacts:
-          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
-          destination: macos-build
-      - persist_to_workspace:
-          root: src-tauri/target
-          paths:
-            - << pipeline.parameters.build-profile >>/bundle/dmg
-
   build-windows:
     executor: windows-builder
     steps:
@@ -205,7 +176,7 @@ jobs:
       - run:
           name: Install Node.js
           command: |
-            choco install nodejs --version=20.11.1 -y
+            choco install nodejs --version=22.12.0 -y
             node --version
             npm --version
       - run:
@@ -214,21 +185,30 @@ jobs:
             # Install Visual Studio Build Tools (includes required C++ toolchain)
             choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64" -y
             
-            # Install Rust with stable toolchain
-            if (!(Get-Command rustc -ErrorAction SilentlyContinue)) {
+            # Install Rust with the native Windows MSVC toolchain.
+            $target = "x86_64-pc-windows-msvc"
+            $toolchain = "stable-$target"
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $env:Path = "$cargoBin;$env:Path"
+
+            if (!(Test-Path (Join-Path $cargoBin "rustup.exe"))) {
               Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
               .\rustup-init.exe -y --default-toolchain stable
               Remove-Item rustup-init.exe
             }
             
-            # Set up PATH for Rust
-            $cargoPath = "$env:USERPROFILE\.cargo\bin"
-            $env:Path = "$cargoPath;$env:Path"
+            # Install the target on the exact toolchain that Cargo will use.
+            rustup toolchain install $toolchain --profile minimal --target $target
+            rustup target add $target --toolchain $toolchain
+            rustup default $toolchain
+
+            # Make Rust available to subsequent CircleCI Windows steps too.
             [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
             
             # Verify installation
-            rustc --version
-            cargo --version
+            rustup run $toolchain rustc --version
+            rustup target list --installed --toolchain $toolchain
+            rustup run $toolchain cargo --version
             echo "Build tools installed successfully"
       - restore_cache:
           keys:
@@ -243,29 +223,37 @@ jobs:
             - node_modules
       - restore_cache:
           keys:
-            - rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
-            - rust-build-windows-
+            - rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}
       - run:
           name: Build Tauri app
           command: |
+            # Discard any target artifacts made with the GNU target. Those
+            # artifacts invoke dlltool, which is not part of the MSVC build.
+            $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+            $env:Path = "$cargoBin;$env:Path"
+            $env:RUSTUP_TOOLCHAIN = "stable-x86_64-pc-windows-msvc"
+            $env:CARGO_BUILD_TARGET = "x86_64-pc-windows-msvc"
+            rustup run $env:RUSTUP_TOOLCHAIN rustc -vV
+            rustup target add $env:CARGO_BUILD_TARGET --toolchain $env:RUSTUP_TOOLCHAIN
+            cargo clean --target $env:CARGO_BUILD_TARGET --manifest-path src-tauri/Cargo.toml
             $debugFlag = ""
             if ("<< pipeline.parameters.build-profile >>" -eq "debug") {
               $debugFlag = "--debug"
             }
-            npx tauri build $debugFlag --bundles msi,nsis
+            npm run desktop:build -- --variant << pipeline.parameters.windows-variant >> $debugFlag --target $env:CARGO_BUILD_TARGET --bundles msi,nsis
           no_output_timeout: 30m
       - save_cache:
-          key: rust-build-windows-{{ checksum "src-tauri/Cargo.lock" }}
+          key: rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}
           paths:
             - src-tauri/target
       - store_artifacts:
-          path: src-tauri/target/<< pipeline.parameters.build-profile >>/bundle
+          path: src-tauri/target/x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle
           destination: windows-build
       - persist_to_workspace:
           root: src-tauri/target
           paths:
-            - << pipeline.parameters.build-profile >>/bundle/msi
-            - << pipeline.parameters.build-profile >>/bundle/nsis
+            - x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle/msi
+            - x86_64-pc-windows-msvc/<< pipeline.parameters.build-profile >>/bundle/nsis
 
   collect-artifacts:
     docker:
@@ -286,21 +274,10 @@ jobs:
 workflows:
   version: 2
 
-  # Main workflow - runs on main and separation-attempt branches
+  # Main workflow - automatic builds are Windows-only. Linux/macOS desktop
+  # packages are built from the manual GitHub Actions workflow when needed.
   build-desktop-apps:
     jobs:
-      - build-linux:
-          filters:
-            branches:
-              only:
-                - main
-                - separation-attempt
-      - build-macos:
-          filters:
-            branches:
-              only:
-                - main
-                - separation-attempt
       - build-windows:
           filters:
             branches:
@@ -309,8 +286,6 @@ workflows:
                 - separation-attempt
       - collect-artifacts:
           requires:
-            - build-linux
-            - build-macos
             - build-windows
           filters:
             branches:
@@ -318,34 +293,5 @@ workflows:
                 - main
                 - separation-attempt
 
-  # Tag-based workflow - runs only on git tags
-  build-on-tags:
-    jobs:
-      - build-linux:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-      - build-macos:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-      - build-windows:
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
-      - collect-artifacts:
-          requires:
-            - build-linux
-            - build-macos
-            - build-windows
-          filters:
-            tags:
-              only: /^v.*/
-            branches:
-              ignore: /.*/
+  # Release tags are built and published by GitHub Actions after manual
+  # testing and approval. CircleCI intentionally does not build releases.

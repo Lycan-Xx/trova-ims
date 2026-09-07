@@ -111,12 +111,14 @@ export default async function ProductDetailPage({
   const formatCurrency = makeFormatCurrency(currencySymbol)
 
   const product = result.data
+  const trackInventory = product.track_inventory !== false
   const currentStock = product.current_stock ?? 0
-  const isOut = currentStock === 0
+  const isOut = trackInventory && currentStock === 0
   const isLow = !isOut && currentStock <= product.reorder_level
 
-  const stockBadgeVariant = isOut ? 'danger' : isLow ? 'warning' : 'success'
-  const stockBadgeLabel = isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'
+  const stockBadgeVariant: 'default' | 'danger' | 'warning' | 'success' =
+    !trackInventory ? 'default' : isOut ? 'danger' : isLow ? 'warning' : 'success'
+  const stockBadgeLabel = !trackInventory ? 'Not Tracked' : isOut ? 'Out of Stock' : isLow ? 'Low Stock' : 'In Stock'
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -205,42 +207,65 @@ export default async function ProductDetailPage({
             </span>
           </InfoCell>
 
-          <InfoCell label="Reorder Level">
-            <span className="text-sm tabular-nums" style={{ color: 'var(--text-primary)' }}>
-              {product.reorder_level} units
-            </span>
+          <InfoCell label="Stock Tracking">
+            <Badge variant={stockBadgeVariant}>{stockBadgeLabel}</Badge>
           </InfoCell>
         </div>
 
         {/* Current stock — prominent */}
-        <div
-          className="flex items-center gap-4 rounded-lg px-5 py-4"
-          style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
-        >
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-              Current Stock
-            </p>
-            <p
-              className="text-4xl font-bold tabular-nums leading-none"
-              style={{
-                color: isOut
-                  ? 'var(--danger)'
-                  : isLow
-                    ? 'var(--warning)'
-                    : 'var(--positive)',
-              }}
-            >
-              {currentStock}
-            </p>
-            <p className="text-xs mt-1 capitalize" style={{ color: 'var(--text-muted)' }}>
-              {product.unit}
-            </p>
+        {trackInventory ? (
+          <div
+            className="flex items-center gap-4 rounded-lg px-5 py-4"
+            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                Current Stock
+              </p>
+              <p
+                className="text-4xl font-bold tabular-nums leading-none"
+                style={{
+                  color: isOut
+                    ? 'var(--danger)'
+                    : isLow
+                      ? 'var(--warning)'
+                      : 'var(--positive)',
+                }}
+              >
+                {currentStock}
+              </p>
+              <p className="text-xs mt-1 capitalize" style={{ color: 'var(--text-muted)' }}>
+                {product.unit}
+              </p>
+            </div>
+            <div className="ml-2">
+              <Badge variant={stockBadgeVariant}>{stockBadgeLabel}</Badge>
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                Reorder Level
+              </p>
+              <p className="text-sm tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                {product.reorder_level} units
+              </p>
+            </div>
           </div>
-          <div className="ml-2">
+        ) : (
+          <div
+            className="flex items-center justify-between gap-4 rounded-lg px-5 py-4"
+            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
+          >
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                Stock Tracking
+              </p>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                This product can be sold without stock intake. Record fresh stock intake to start tracking it again.
+              </p>
+            </div>
             <Badge variant={stockBadgeVariant}>{stockBadgeLabel}</Badge>
           </div>
-        </div>
+        )}
 
         {/* Description */}
         {product.description && (
@@ -251,10 +276,11 @@ export default async function ProductDetailPage({
       </div>
 
       {/* ── Batch history table ───────────────────────────────────────────── */}
-      <div
-        className="rounded-[12px] overflow-hidden"
-        style={{ border: '1px solid var(--border)' }}
-      >
+      {trackInventory && (
+        <div
+          className="rounded-[12px] overflow-hidden"
+          style={{ border: '1px solid var(--border)' }}
+        >
         {/* Table header */}
         <div
           className="flex items-center justify-between px-5 py-4"
@@ -322,7 +348,8 @@ export default async function ProductDetailPage({
             </table>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

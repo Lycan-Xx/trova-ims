@@ -40,6 +40,7 @@ export async function createProduct(formData: {
   unit?: string
   sellingPrice: number | string
   reorderLevel?: number
+  trackInventory?: boolean
   description?: string
   barcode?: string | null
 }): Promise<{ success: true; data: Product } | { success: false; error: string }> {
@@ -60,12 +61,13 @@ export async function createProduct(formData: {
 
     const sku = generateSKU(categoryName)
     const barcode = formData.barcode?.trim() || null
+    const trackInventory = formData.trackInventory ?? true
 
     const result = await query(
       `INSERT INTO products
-        (id, store_id, category_id, sku, name, description, barcode, unit, selling_price, reorder_level, is_active, created_at)
+        (id, store_id, category_id, sku, name, description, barcode, unit, selling_price, reorder_level, track_inventory, is_active, created_at)
        VALUES
-        (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW())
+        (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, NOW())
        RETURNING *`,
       [
         user.store_id,
@@ -76,7 +78,8 @@ export async function createProduct(formData: {
         barcode,
         formData.unit ?? 'piece',
         formData.sellingPrice,
-        formData.reorderLevel ?? 10,
+        trackInventory ? formData.reorderLevel ?? 10 : 0,
+        trackInventory,
       ],
     )
 
@@ -100,6 +103,7 @@ export async function updateProduct(
     unit?: string
     sellingPrice?: number | string
     reorderLevel?: number
+    trackInventory?: boolean
     description?: string | null
     barcode?: string | null
   },
@@ -109,11 +113,19 @@ export async function updateProduct(
 
     // Verify ownership before mutating
     const existing = await query(
-      'SELECT id FROM products WHERE id = $1 AND store_id = $2 LIMIT 1',
+      'SELECT id, track_inventory FROM products WHERE id = $1 AND store_id = $2 LIMIT 1',
       [productId, user.store_id],
     )
     if (existing.rows.length === 0) {
       return { success: false, error: 'Product not found or access denied.' }
+    }
+
+    const existingProduct = existing.rows[0] as Pick<Product, 'id' | 'track_inventory'>
+    if (existingProduct.track_inventory === false && formData.trackInventory === true) {
+      return {
+        success: false,
+        error: 'Record fresh stock intake for this product before turning stock tracking back on.',
+      }
     }
 
     const result = await query(
@@ -123,16 +135,18 @@ export async function updateProduct(
         unit           = COALESCE($3, unit),
         selling_price  = COALESCE($4, selling_price),
         reorder_level  = COALESCE($5, reorder_level),
-        description    = $6,
-        barcode        = $7
-       WHERE id = $8 AND store_id = $9
+        track_inventory = COALESCE($6, track_inventory),
+        description    = $7,
+        barcode        = $8
+       WHERE id = $9 AND store_id = $10
        RETURNING *`,
       [
         formData.name ?? null,
         formData.categoryId !== undefined ? formData.categoryId : null,
         formData.unit ?? null,
         formData.sellingPrice !== undefined ? formData.sellingPrice : null,
-        formData.reorderLevel ?? null,
+        formData.trackInventory === false ? 0 : formData.reorderLevel ?? null,
+        formData.trackInventory ?? null,
         formData.description !== undefined ? formData.description : null,
         formData.barcode !== undefined ? (formData.barcode?.trim() || null) : null,
         productId,
@@ -151,8 +165,7 @@ export async function updateProduct(
 }
 
 // ─── deactivateProduct ────────────────────────────────────────────────────────
-// Soft delete only — never hard delete, since batches/sale_items reference
-// products via foreign keys and historical records must stay intact.
+// Soft delete — hides from catalog and POS but keeps history intact.
 
 export async function deactivateProduct(
   productId: string,
@@ -176,6 +189,52 @@ export async function deactivateProduct(
     )
 
     return { success: true, data: result.rows[0] as Product }
+  } catch (err) {
+    return { success: false, error: (err as Error).message }
+  }
+}
+
+// ─── deleteProduct ─────────────────────────────────────────────────────────────
+// Hard delete. Blocked by the database if the product has any batches or
+// sale_items (ON DELETE RESTRICT foreign keys), which is the right behaviour —
+// you can't delete a product that's part of existing stock or sales history.
+// The UI should only expose this for products with no recorded batches.
+
+export async function deleteProduct(
+  productId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const user = await requireOwner()
+
+    const existing = await query(
+      'SELECT id FROM products WHERE id = $1 AND store_id = $2 LIMIT 1',
+      [productId, user.store_id],
+    )
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Product not found or access denied.' }
+    }
+
+    // Check for existing batches before attempting the delete — gives a
+    // cleaner error message than letting the FK constraint fire.
+    const batchCheck = await query(
+      'SELECT id FROM batches WHERE product_id = $1 LIMIT 1',
+      [productId],
+    )
+    if (batchCheck.rows.length > 0) {
+      return {
+        success: false,
+        error:
+          'This product has stock intake records and cannot be deleted. ' +
+          'Use Deactivate to hide it from the catalog instead.',
+      }
+    }
+
+    await query(
+      'DELETE FROM products WHERE id = $1 AND store_id = $2',
+      [productId, user.store_id],
+    )
+
+    return { success: true }
   } catch (err) {
     return { success: false, error: (err as Error).message }
   }
@@ -210,15 +269,17 @@ export async function getProducts(
       paramIdx++
     }
 
-    const whereClause = conditions.join(' AND ')
-
     // Stock status filter is applied as a HAVING clause on the aggregated CTE
     let havingClause = ''
     if (filters.stockStatus === 'out') {
+      conditions.push('p.track_inventory = true')
       havingClause = 'HAVING COALESCE(SUM(b.qty_remaining), 0) = 0'
     } else if (filters.stockStatus === 'low') {
+      conditions.push('p.track_inventory = true')
       havingClause = 'HAVING COALESCE(SUM(b.qty_remaining), 0) > 0 AND COALESCE(SUM(b.qty_remaining), 0) <= p.reorder_level'
     }
+
+    const whereClause = conditions.join(' AND ')
 
     // Count query (uses same CTE pattern for accurate stock-filtered counts)
     const countSql = `

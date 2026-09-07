@@ -3,8 +3,11 @@ import Link from 'next/link'
 import { CheckCircle2, ArrowLeft } from 'lucide-react'
 import { getSaleById } from '@/app/actions/sales'
 import { ReceiptDownloadButton } from '@/components/sales/receipt-download-button'
+import { PrintReceiptButton } from '@/components/sales/print-receipt-button'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol } from '@/lib/currency'
+import { getCurrentUser } from '@/lib/auth'
+import { DeleteSaleButton } from '@/components/sales/delete-sale-button'
 
 export default async function SaleConfirmationPage({
   params,
@@ -12,6 +15,9 @@ export default async function SaleConfirmationPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+
   const [result, storeResult] = await Promise.all([getSaleById(id), getStoreSettings()])
 
   if (!result.success) redirect('/sales')
@@ -225,7 +231,20 @@ export default async function SaleConfirmationPage({
 
         {/* Action buttons */}
         <div className="flex gap-3">
-          <ReceiptDownloadButton sale={sale} />
+          {/* Desktop-only: renders null on web */}
+          <PrintReceiptButton
+            sale={sale}
+            storeName={storeResult.success ? storeResult.data.name : undefined}
+            storeAddress={storeResult.success ? storeResult.data.address ?? undefined : undefined}
+            storePhone={storeResult.success ? storeResult.data.phone ?? undefined : undefined}
+          />
+
+          <ReceiptDownloadButton
+            sale={sale}
+            storeName={storeResult.success ? storeResult.data.name : undefined}
+            storeAddress={storeResult.success ? storeResult.data.address ?? undefined : undefined}
+            storePhone={storeResult.success ? storeResult.data.phone ?? undefined : undefined}
+          />
 
           <Link
             href="/sales/new"
@@ -238,6 +257,10 @@ export default async function SaleConfirmationPage({
           >
             New Sale
           </Link>
+
+          {user.role === 'owner' && (
+            <DeleteSaleButton saleId={sale.id} receiptNumber={sale.receipt_number} />
+          )}
         </div>
       </div>
     </div>

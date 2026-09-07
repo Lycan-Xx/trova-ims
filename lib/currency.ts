@@ -1,17 +1,17 @@
 // Currency formatting utilities
 
 const CURRENCY_CONFIG: Record<string, { symbol: string; name: string }> = {
-  NGN: { symbol: '₦', name: 'Nigerian Naira' },
+  NGN: { symbol: '\u20A6', name: 'Nigerian Naira' },
   USD: { symbol: '$', name: 'US Dollar' },
-  EUR: { symbol: '€', name: 'Euro' },
-  GBP: { symbol: '£', name: 'British Pound' },
+  EUR: { symbol: '\u20AC', name: 'Euro' },
+  GBP: { symbol: '\u00A3', name: 'British Pound' },
   CAD: { symbol: 'C$', name: 'Canadian Dollar' },
   AUD: { symbol: 'A$', name: 'Australian Dollar' },
-  JPY: { symbol: '¥', name: 'Japanese Yen' },
-  INR: { symbol: '₹', name: 'Indian Rupee' },
+  JPY: { symbol: '\u00A5', name: 'Japanese Yen' },
+  INR: { symbol: '\u20B9', name: 'Indian Rupee' },
   KES: { symbol: 'KSh', name: 'Kenyan Shilling' },
   ZAR: { symbol: 'R', name: 'South African Rand' },
-  GHS: { symbol: 'GH₵', name: 'Ghanaian Cedi' },
+  GHS: { symbol: 'GH\u20B5', name: 'Ghanaian Cedi' },
 }
 
 export const SUPPORTED_CURRENCIES = Object.entries(CURRENCY_CONFIG).map(([code, { name }]) => ({

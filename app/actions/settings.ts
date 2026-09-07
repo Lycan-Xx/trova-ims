@@ -1,9 +1,10 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidateTag } from 'next/cache'
-import { cache } from 'react'
-import { query } from '@/lib/db'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { query, IS_DESKTOP } from '@/lib/db'
+import { isTestModeEnabled, setTestModeEnabled } from '@/lib/db/test-mode'
+import { getDesktopTestDb } from '@/lib/db/desktop-init'
 import { requireOwner, getCurrentUser } from '@/lib/auth'
 import type { Store, User, UserRole } from '@/lib/db/schema'
 
@@ -32,6 +33,11 @@ export async function updateStoreSettings(formData: {
     
     // Revalidate store cache so CurrencyProvider gets fresh data
     revalidateTag(`store-${user.store_id}`, 'max')
+    revalidatePath('/dashboard')
+    revalidatePath('/sales', 'layout')
+    revalidatePath('/products', 'layout')
+    revalidatePath('/intake', 'layout')
+    revalidatePath('/settings')
     
     return { success: true }
   } catch (err) {
@@ -42,10 +48,10 @@ export async function updateStoreSettings(formData: {
 
 // ── getStoreSettings ───────────────────────────────────────────────────────────
 
-export const getStoreSettings = cache(async (): Promise<
+export async function getStoreSettings(): Promise<
   { success: true; data: Store } |
   { success: false; error: string }
-> => {
+> {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
 
@@ -60,7 +66,7 @@ export const getStoreSettings = cache(async (): Promise<
     const message = err instanceof Error ? err.message : 'Failed to fetch store settings.'
     return { success: false, error: message }
   }
-})
+}
 
 // ── getUsers ───────────────────────────────────────────────────────────────────
 
@@ -193,6 +199,62 @@ export async function inviteUser(
     return { success: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to add user.'
+    return { success: false, error: message }
+  }
+}
+
+// ── Test Mode ────────────────────────────────────────────────────────────────
+// Desktop-only. When enabled, all sales and products created route to an
+// isolated local database instead of the real one — see lib/db/test-mode.ts
+// and lib/db/desktop-init.ts (getDesktopTestDb). Toggling does not move or
+// copy any data; it only changes which database new queries hit.
+
+export async function getTestModeStatus(): Promise<{ available: boolean; enabled: boolean }> {
+  if (!IS_DESKTOP) return { available: false, enabled: false }
+  await requireOwner()
+  return { available: true, enabled: isTestModeEnabled() }
+}
+
+export async function setTestMode(
+  enabled: boolean,
+): Promise<{ success: true } | { success: false; error: string }> {
+  if (!IS_DESKTOP) {
+    return { success: false, error: 'Test Mode is only available in the desktop app.' }
+  }
+  await requireOwner()
+
+  setTestModeEnabled(enabled)
+
+  // Everything reads store data — the whole shell (including the sidebar
+  // indicator) needs to reflect whichever database is now active.
+  revalidatePath('/', 'layout')
+
+  return { success: true }
+}
+
+export async function clearTestData(): Promise<{ success: true } | { success: false; error: string }> {
+  if (!IS_DESKTOP) {
+    return { success: false, error: 'Test Mode is only available in the desktop app.' }
+  }
+  await requireOwner()
+
+  if (!isTestModeEnabled()) {
+    return { success: false, error: 'Turn Test Mode on before clearing test data.' }
+  }
+
+  try {
+    const db = await getDesktopTestDb()
+    // Deliberately excludes stores/users — those hold the schema-seeded
+    // identity the desktop auth bypass depends on. Everything else in the
+    // test database is fair game since none of it is real store data.
+    await db.exec(
+      `TRUNCATE sale_items, sales, batches, products, vendors, categories, invitations
+       RESTART IDENTITY CASCADE`,
+    )
+    revalidatePath('/', 'layout')
+    return { success: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to clear test data.'
     return { success: false, error: message }
   }
 }

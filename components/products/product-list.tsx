@@ -21,7 +21,7 @@ import {
 import { ProductSlideOver } from '@/components/products/product-slide-over'
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
-import { deactivateProduct } from '@/app/actions/products'
+import { deactivateProduct, deleteProduct } from '@/app/actions/products'
 import { toast } from 'sonner'
 import type { ProductWithStock } from '@/app/actions/products'
 import type { Category } from '@/lib/db/schema'
@@ -34,7 +34,10 @@ interface ProductListProps {
   totalCount: number
 }
 
-function getStockBadge(stock: number, reorderLevel: number) {
+function getStockBadge(product: ProductWithStock) {
+  if (!product.track_inventory) return <Badge variant="default">Not Tracked</Badge>
+  const stock = product.current_stock
+  const reorderLevel = product.reorder_level
   if (stock === 0) return <Badge variant="danger">Out of Stock</Badge>
   if (stock <= reorderLevel) return <Badge variant="warning">Low Stock</Badge>
   return <Badge variant="success">In Stock</Badge>
@@ -61,18 +64,17 @@ export function ProductList({
     setSlideOverOpen(true)
   }
 
-  async function handleDeactivate(product: ProductWithStock) {
+  async function handleDelete(product: ProductWithStock) {
     const confirmed = window.confirm(
-      `Deactivate "${product.name}"? It will be hidden from the catalog and POS search, but its stock history stays intact. You can't undo this from the UI yet.`,
+      `Delete "${product.name}"?\n\nThis is permanent. If this product has any stock intake records it cannot be deleted — deactivate it instead to hide it from the catalog.`,
     )
     if (!confirmed) return
-
-    const result = await deactivateProduct(product.id)
+    const result = await deleteProduct(product.id)
     if (!result.success) {
       toast.error(result.error)
       return
     }
-    toast.success(`${product.name} deactivated.`)
+    toast.success(`${product.name} deleted.`)
     router.refresh()
   }
 
@@ -248,15 +250,21 @@ export function ProductList({
 
                   {/* Stock */}
                   <td className="px-4 py-3">
-                    <span className="text-sm text-text-primary">{product.current_stock}</span>
-                    <span className="text-[11px] text-text-muted ml-1">
-                      {product.unit}
-                    </span>
+                    {product.track_inventory ? (
+                      <>
+                        <span className="text-sm text-text-primary">{product.current_stock}</span>
+                        <span className="text-[11px] text-text-muted ml-1">
+                          {product.unit}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-text-muted">Not tracked</span>
+                    )}
                   </td>
 
                   {/* Status badge */}
                   <td className="px-4 py-3">
-                    {getStockBadge(product.current_stock, product.reorder_level)}
+                    {getStockBadge(product)}
                   </td>
 
                   {/* Actions */}
@@ -275,14 +283,17 @@ export function ProductList({
                         >
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer hover:bg-bg-input focus:bg-bg-input">
+                        <DropdownMenuItem
+                          className="cursor-pointer hover:bg-bg-input focus:bg-bg-input"
+                          onClick={() => router.push(`/products/${product.id}`)}
+                        >
                           View Details
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="cursor-pointer text-danger hover:bg-bg-input focus:bg-bg-input"
-                          onClick={() => handleDeactivate(product)}
+                          onClick={() => handleDelete(product)}
                         >
-                          Deactivate
+                          Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

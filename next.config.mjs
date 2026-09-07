@@ -1,3 +1,7 @@
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const pkg = require('./package.json')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Required so the Tauri desktop shell can run the app's server as a
@@ -5,6 +9,14 @@ const nextConfig = {
   // deploys are unaffected by this — it only changes what `next build`
   // additionally emits into .next/standalone.
   output: 'standalone',
+
+  // Expose the version from package.json as a client-side env var so
+  // the sidebar and settings page can show it without a server round-trip.
+  // release-please bumps package.json on every release, so this stays
+  // in sync automatically.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: pkg.version,
+  },
 
   // Keep these packages as external require() calls rather than bundling
   // them into the SSR chunks. This is critical for two reasons:
@@ -37,13 +49,12 @@ const nextConfig = {
     unoptimized: true,
   },
 
-  // Expose DESKTOP_MODE to the browser so client components can detect
-  // Tauri desktop mode at runtime. The Tauri shell sets this env var
-  // when spawning the Next.js server. Without this, Next.js inlines
-  // process.env.DESKTOP_MODE at build time (undefined) instead of
-  // reading it at runtime.
-  env: {
-    DESKTOP_MODE: process.env.DESKTOP_MODE,
+  // Keep PGlite's WASM/runtime assets in the standalone server output.
+  outputFileTracingIncludes: {
+    '/*': [
+      'node_modules/@electric-sql/pglite/package.json',
+      'node_modules/@electric-sql/pglite/dist/**/*',
+    ],
   },
 
   // Improve Node file tracing for standalone builds

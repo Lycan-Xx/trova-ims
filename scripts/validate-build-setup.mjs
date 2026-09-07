@@ -144,20 +144,16 @@ if (existsSync(circleConfig)) {
   const content = readFileSync(circleConfig, 'utf-8')
   
   // Check executors
-  if (content.includes('linux-builder') && 
-      content.includes('macos-builder') && 
-      content.includes('windows-builder')) {
-    console.log('  ✓ All platform executors configured')
+  if (content.includes('linux-builder') && content.includes('windows-builder')) {
+    console.log('  ✓ Platform executors configured (Linux manual, Windows automatic)')
   } else {
     console.error('  ❌ Missing platform executors')
     errors++
   }
   
   // Check jobs
-  if (content.includes('build-linux') && 
-      content.includes('build-macos') && 
-      content.includes('build-windows')) {
-    console.log('  ✓ All platform build jobs configured')
+  if (content.includes('build-linux') && content.includes('build-windows')) {
+    console.log('  ✓ Platform build jobs configured (Linux manual, Windows automatic)')
   } else {
     console.error('  ❌ Missing platform build jobs')
     errors++
@@ -198,6 +194,24 @@ if (existsSync(tauriConfig)) {
     }
     if (config.bundle?.resources) {
       console.log('  ✓ Bundle resources configured')
+    }
+
+    const packageVersion = JSON.parse(readFileSync(packageJson, 'utf-8')).version
+    const cargo = readFileSync(join(root, 'src-tauri', 'Cargo.toml'), 'utf-8')
+    const cargoVersion = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1]
+    if (cargoVersion === packageVersion) {
+      console.log(`  ✓ Desktop version synchronized: ${packageVersion}`)
+    } else {
+      console.error(`  ✗ Desktop version mismatch: package.json=${packageVersion}, Cargo.toml=${cargoVersion}`)
+      errors++
+    }
+
+    const nsis = config.bundle?.windows?.nsis
+    if (nsis?.installMode === 'currentUser' && !('upgradeCode' in nsis)) {
+      console.log('  ✓ NSIS options match the installed Tauri schema')
+    } else {
+      console.error('  ✗ NSIS options do not match the installed Tauri schema')
+      errors++
     }
   } catch (err) {
     console.error('  ❌ tauri.conf.json is invalid JSON')
