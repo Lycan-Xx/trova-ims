@@ -13,6 +13,8 @@ const PUBLIC_PREFIXES = [
   '/privacy',
   '/landing',
   '/demo',
+  '/download',
+  '/fonts',
 ]
 
 export function proxy(request: NextRequest) {

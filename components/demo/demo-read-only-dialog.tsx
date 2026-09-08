@@ -41,7 +41,7 @@ export function DemoReadOnlyDialog({
           The public preview is intentionally read-only. Install Trova to record sales, manage stock, create receipts, and keep your store data securely on your own computer.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Link href="https://github.com/Lycan-Xx/trova-ims/releases" target="_blank" rel="noreferrer" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-accent-primary px-4 text-sm font-semibold text-white hover:opacity-90">
+          <Link href="/download" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-accent-primary px-4 text-sm font-semibold text-white hover:opacity-90">
             <Download size={15} aria-hidden="true" /> View downloads
           </Link>
           <button type="button" onClick={onClose} className="h-10 flex-1 rounded-lg border border-border bg-bg-input px-4 text-sm font-semibold text-text-secondary hover:text-white">
@@ -52,4 +52,3 @@ export function DemoReadOnlyDialog({
     </div>
   )
 }
-

@@ -19,6 +19,12 @@ export default function Nav() {
 
       <div className="flex items-center gap-3">
         <Link
+          href="/download"
+          className="hidden text-[13px] text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)] sm:inline"
+        >
+          Download
+        </Link>
+        <Link
           href="/sign-in"
           className="text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors duration-150"
         >

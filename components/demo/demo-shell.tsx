@@ -25,7 +25,7 @@ export function DemoShell({
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-xs text-text-muted sm:inline">No account or setup needed</span>
-            <Link href="https://github.com/Lycan-Xx/trova-ims/releases" target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-2 rounded-lg bg-accent-primary px-3 text-xs font-semibold text-white hover:opacity-90">
+            <Link href="/download" className="inline-flex h-8 items-center gap-2 rounded-lg bg-accent-primary px-3 text-xs font-semibold text-white hover:opacity-90">
               <Download size={14} aria-hidden="true" /> Download
             </Link>
           </div>
@@ -37,4 +37,3 @@ export function DemoShell({
     </div>
   )
 }
-

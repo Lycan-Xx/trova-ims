@@ -36,7 +36,7 @@ export function DemoDesktopNavigation({ activeView }: { activeView: DemoView }) 
       </nav>
       <div className="rounded-xl border border-border bg-bg-card p-3">
         <p className="text-xs font-semibold text-white">Ready for your store?</p>
-        <Link href="https://github.com/Lycan-Xx/trova-ims/releases" target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-accent-primary hover:text-white">Download Trova →</Link>
+        <Link href="/download" className="mt-2 inline-block text-xs font-semibold text-accent-primary hover:text-white">Download Trova →</Link>
       </div>
     </aside>
   )
@@ -56,4 +56,3 @@ export function DemoMobileNavigation({ activeView }: { activeView: DemoView }) {
     </nav>
   )
 }
-
