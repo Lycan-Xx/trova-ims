@@ -124,11 +124,11 @@ export function SalesCsvButton({
             style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
           >
             <h2 id="sales-export-title" className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-              Export retained sales?
+              Export sales?
             </h2>
             <p className="mt-3 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              This export includes only sales still kept on this device. Older sales are automatically
-              removed after about 30 days, so export regularly if you need long-term records.
+              This export includes sales from the selected filters that are retained on this device.
+              Sales older than two years are outside the local retention window.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -145,7 +145,7 @@ export function SalesCsvButton({
                 className="h-9 rounded-md px-3 text-sm font-medium"
                 style={{ background: 'var(--accent-primary)', color: '#fff' }}
               >
-                Export retained sales
+                Export sales
               </button>
             </div>
           </div>

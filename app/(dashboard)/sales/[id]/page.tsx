@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { CheckCircle2, ArrowLeft } from 'lucide-react'
+import { CheckCircle2, ArrowLeft, ShieldAlert } from 'lucide-react'
 import { getSaleById } from '@/app/actions/sales'
 import { ReceiptDownloadButton } from '@/components/sales/receipt-download-button'
 import { PrintReceiptButton } from '@/components/sales/print-receipt-button'
 import { getStoreSettings } from '@/app/actions/settings'
 import { getCurrencySymbol } from '@/lib/currency'
 import { getCurrentUser } from '@/lib/auth'
-import { DeleteSaleButton } from '@/components/sales/delete-sale-button'
+import { VoidSaleButton } from '@/components/sales/void-sale-button'
 
 export default async function SaleConfirmationPage({
   params,
@@ -65,13 +65,13 @@ export default async function SaleConfirmationPage({
             className="flex items-center justify-center w-16 h-16 rounded-full mb-4"
             style={{ background: 'var(--positive-bg)' }}
           >
-            <CheckCircle2 size={32} style={{ color: 'var(--positive)' }} />
+            {sale.voided_at ? <ShieldAlert size={32} style={{ color: 'var(--danger)' }} /> : <CheckCircle2 size={32} style={{ color: 'var(--positive)' }} />}
           </div>
           <h1
             className="text-2xl font-bold mb-2"
             style={{ color: 'var(--text-primary)' }}
           >
-            Sale Complete
+            {sale.voided_at ? 'Sale Voided' : 'Sale Complete'}
           </h1>
           <p
             className="mono text-xl tracking-wider mb-1"
@@ -227,6 +227,12 @@ export default async function SaleConfirmationPage({
               </div>
             )}
           </div>
+          {sale.voided_at && (
+            <div className="px-5 py-4 text-sm" style={{ borderTop: '1px solid var(--border)', background: 'var(--danger-bg)', color: 'var(--text-secondary)' }}>
+              <p className="font-semibold" style={{ color: 'var(--danger)' }}>Voided {fmtDate(sale.voided_at)}</p>
+              {sale.void_reason && <p className="mt-1">Reason: {sale.void_reason}</p>}
+            </div>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -258,8 +264,8 @@ export default async function SaleConfirmationPage({
             New Sale
           </Link>
 
-          {user.role === 'owner' && (
-            <DeleteSaleButton saleId={sale.id} receiptNumber={sale.receipt_number} />
+          {user.role === 'owner' && !sale.voided_at && (
+            <VoidSaleButton saleId={sale.id} receiptNumber={sale.receipt_number} />
           )}
         </div>
       </div>

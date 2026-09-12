@@ -2,24 +2,14 @@
 
 import { getCurrentUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { query, withConnection } from '@/lib/db'
+import { query, withTransaction } from '@/lib/db'
 import { generateReceiptNumber } from '@/lib/db/helpers'
 import type { ClientBase } from 'pg'
+import { normalizeCart, moneyCents, resolveSaleDeductions, quoteFromDeductions, type CartItem, type SaleDeduction, type SaleQuote } from '@/lib/sales-pricing'
+import { BUSINESS_UTC_OFFSET } from '@/lib/business-date'
+export type { CartItem, SaleQuote } from '@/lib/sales-pricing'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-export interface CartItem {
-  productId: string
-  qtySold: number
-}
-
-interface SaleDeduction {
-  batchId: string | null
-  productId: string
-  productName: string
-  qtyDeducted: number
-  unitPrice: number   // resolved at time of deduction
-}
 
 export interface SaleItemResult {
   productId: string
@@ -51,6 +41,9 @@ export interface SaleRow {
   change_given: string | null
   payment_method: string
   notes: string | null
+  voided_at: string | null
+  voided_by_id: string | null
+  void_reason: string | null
   created_at: string
   sales_date: string
   items_count: number
@@ -130,11 +123,41 @@ async function getExistingSaleForRequest(
 
 // ── createSale ─────────────────────────────────────────────────────────────────
 
+export async function getSaleByRequestId(
+  requestId: string,
+): Promise<{ success: true; data: { saleId: string; receiptNumber: string; voidedAt: string | null } | null } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  if (!requestId || requestId.length > 128) return { success: false, error: 'Invalid checkout request.' }
+
+  try {
+    const result = await query(
+      `SELECT id, receipt_number, voided_at
+       FROM sales
+       WHERE store_id = $1 AND client_request_id = $2
+       LIMIT 1`,
+      [user.store_id, requestId],
+    )
+    const sale = result.rows[0]
+    return {
+      success: true,
+      data: sale ? {
+        saleId: String(sale.id),
+        receiptNumber: String(sale.receipt_number),
+        voidedAt: sale.voided_at ? String(sale.voided_at) : null,
+      } : null,
+    }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Could not check checkout status.' }
+  }
+}
+
 export async function createSale(
   cartItems: CartItem[],
   paymentMethod: 'cash' | 'transfer' | 'pos',
   amountPaid: number,
   requestId: string,
+  expectedTotal: number,
 ): Promise<{ success: true; data: SaleResult } | { success: false; error: string }> {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
@@ -142,119 +165,42 @@ export async function createSale(
   if (!cartItems || cartItems.length === 0) {
     return { success: false, error: 'Cart is empty.' }
   }
-  if (!requestId || requestId.length > 128) {
+  if (typeof requestId !== 'string' || !requestId.trim() || requestId.length > 128) {
     return { success: false, error: 'Invalid checkout request.' }
   }
 
+  if (!['cash', 'transfer', 'pos'].includes(paymentMethod)) return { success: false, error: 'Invalid payment method.' }
   try {
-    const result = await withConnection(async (client: ClientBase) => {
-      await client.query('BEGIN')
+    cartItems = normalizeCart(cartItems)
+    moneyCents(expectedTotal)
+    const result = await withTransaction(async (client: ClientBase) => {
 
       try {
         // A retry after a slow or interrupted response must return the first
         // completed sale instead of recording the basket again.
         const existingSale = await getExistingSaleForRequest(client, user.store_id, requestId)
         if (existingSale) {
-          await client.query('COMMIT')
           return existingSale
         }
 
-        // ── STEP 1: FEFO Batch Resolution ────────────────────────────────────
-        const allDeductions: SaleDeduction[] = []
-
-        for (const item of cartItems) {
-          if (item.qtySold <= 0) continue
-
-          // Fetch product for name + default selling price
-          const productRes = await client.query(
-            `SELECT id, name, selling_price, track_inventory FROM products
-             WHERE id = $1 AND store_id = $2 AND is_active = true
-             LIMIT 1`,
-            [item.productId, user.store_id],
-          )
-          if (productRes.rows.length === 0) {
-            throw new Error(`Product not found: ${item.productId}`)
+        let allDeductions: SaleDeduction[]
+        try {
+          allDeductions = await resolveSaleDeductions(client, user.store_id, cartItems)
+        } catch (error) {
+          // A concurrent retry may have used the final units while we waited
+          // for product/batch locks. Return that committed receipt if present.
+          if (error instanceof Error && error.message.startsWith('Insufficient stock')) {
+            const completed = await getExistingSaleForRequest(client, user.store_id, requestId)
+            if (completed) return completed
           }
-          const product = productRes.rows[0]
-
-          if (!product.track_inventory) {
-            allDeductions.push({
-              batchId: null,
-              productId: item.productId,
-              productName: product.name,
-              qtyDeducted: item.qtySold,
-              unitPrice: parseFloat(product.selling_price),
-            })
-            continue
-          }
-
-          // Fetch all batches with remaining stock, FEFO order.
-          // FOR UPDATE locks these rows for the duration of the transaction so
-          // concurrent sales (e.g. two cashiers checking out the same product
-          // at once) can't both read the same qty_remaining and oversell.
-          const batchRes = await client.query(
-            `SELECT id, qty_remaining, selling_price_override, expiry_date
-             FROM batches
-             WHERE product_id = $1
-               AND store_id = $2
-               AND qty_remaining > 0
-             ORDER BY expiry_date ASC NULLS LAST, received_at ASC
-             FOR UPDATE`,
-            [item.productId, user.store_id],
-          )
-
-          // This query may have waited for the original checkout to release a
-          // batch lock. Re-check the request before evaluating the now-reduced
-          // stock, otherwise a legitimate retry can report insufficient stock
-          // instead of returning the sale that already completed.
-          const completedWhileWaiting = await getExistingSaleForRequest(
-            client,
-            user.store_id,
-            requestId,
-          )
-          if (completedWhileWaiting) {
-            await client.query('COMMIT')
-            return completedWhileWaiting
-          }
-
-          const batches = batchRes.rows
-          const totalAvailable = batches.reduce(
-            (sum: number, b: { qty_remaining: number }) => sum + b.qty_remaining, 0,
-          )
-
-          if (totalAvailable < item.qtySold) {
-            throw new Error(`Insufficient stock for ${product.name}`)
-          }
-
-          // Walk batches in FEFO order, deducting until qtySold is satisfied
-          let remaining = item.qtySold
-          for (const batch of batches) {
-            if (remaining <= 0) break
-            const deduct = Math.min(remaining, batch.qty_remaining)
-            const unitPrice = batch.selling_price_override !== null
-              ? parseFloat(batch.selling_price_override)
-              : parseFloat(product.selling_price)
-
-            allDeductions.push({
-              batchId: batch.id,
-              productId: item.productId,
-              productName: product.name,
-              qtyDeducted: deduct,
-              unitPrice,
-            })
-            remaining -= deduct
-          }
+          throw error
         }
-
-        // ── STEP 2: Create Sale Record ────────────────────────────────────────
-        if (allDeductions.length === 0) {
-          throw new Error('Cart has no valid items.')
+        const completed = await getExistingSaleForRequest(client, user.store_id, requestId)
+        if (completed) return completed
+        const totalAmount = Number(quoteFromDeductions(allDeductions).totalAmount)
+        if (moneyCents(expectedTotal) !== moneyCents(totalAmount)) {
+          throw new Error('Price changed. Refresh the quote and confirm the new total before completing the sale.')
         }
-
-        const totalAmount = allDeductions.reduce(
-          (sum, d) => sum + d.qtyDeducted * d.unitPrice,
-          0,
-        )
 
         if (
           paymentMethod === 'cash' &&
@@ -302,7 +248,6 @@ export async function createSale(
         if (saleRes.rows.length === 0) {
           const existingSale = await getExistingSaleForRequest(client, user.store_id, requestId)
           if (!existingSale) throw new Error('A matching sale could not be found.')
-          await client.query('COMMIT')
           return existingSale
         }
 
@@ -324,7 +269,7 @@ export async function createSale(
         }
 
         for (const d of mergedDeductions.values()) {
-          const lineTotal = d.qtyDeducted * d.unitPrice
+          const lineTotal = d.qtyDeducted * moneyCents(d.unitPrice) / 100
 
           // Fetch batch ref for the receipt
           let batchRef: string | null = null
@@ -354,12 +299,14 @@ export async function createSale(
 
           // Decrement batch qty_remaining
           if (d.batchId) {
-            await client.query(
+            const updated = await client.query(
               `UPDATE batches
                SET qty_remaining = qty_remaining - $1
-               WHERE id = $2 AND store_id = $3`,
+               WHERE id = $2 AND store_id = $3 AND qty_remaining >= $1
+               RETURNING id`,
               [d.qtyDeducted, d.batchId, user.store_id],
             )
+            if (updated.rows.length !== 1) throw new Error('Stock changed during checkout. Please refresh the cart.')
           }
 
           saleItemResults.push({
@@ -373,8 +320,6 @@ export async function createSale(
           })
         }
 
-        await client.query('COMMIT')
-
         return {
           saleId: sale.id,
           receiptNumber: sale.receipt_number,
@@ -384,7 +329,6 @@ export async function createSale(
           items: saleItemResults,
         } satisfies SaleResult
       } catch (err) {
-        await client.query('ROLLBACK')
         throw err
       }
     })
@@ -420,7 +364,7 @@ export async function getSales(filters?: {
     // filters can be applied against `sales s` (for revenue/count) and
     // `sales s2` (for the units-sold subquery) without duplicating logic.
     type ConditionFn = (alias: string) => string
-    const conditionFns: ConditionFn[] = [(a) => `${a}.store_id = $1`]
+    const conditionFns: ConditionFn[] = [(a) => `${a}.store_id = $1`, (a) => `${a}.voided_at IS NULL`]
     const params: unknown[] = [user.store_id]
     let idx = 2
 
@@ -443,13 +387,13 @@ export async function getSales(filters?: {
 
     if (filters?.dateFrom) {
       const i = idx++
-      conditionFns.push((a) => `${a}.created_at >= $${i}::date`)
+      conditionFns.push((a) => `${a}.created_at >= (($${i}::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)`)
       params.push(filters.dateFrom)
     }
 
     if (filters?.dateTo) {
       const i = idx++
-      conditionFns.push((a) => `${a}.created_at < ($${i}::date + INTERVAL '1 day')`)
+      conditionFns.push((a) => `${a}.created_at < ((($${i}::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)`)
       params.push(filters.dateTo)
     }
 
@@ -488,13 +432,13 @@ export async function getSales(filters?: {
 
     const dayTotalsRes = await query(
       `SELECT
-         s.created_at::date::text AS date,
+         (((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date)::text AS date,
          COUNT(s.id)::int AS transaction_count,
          COALESCE(SUM(s.total_amount), 0)::float AS revenue
        FROM sales s
        WHERE ${where}
-       GROUP BY s.created_at::date
-       ORDER BY s.created_at::date DESC`,
+       GROUP BY ((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date
+       ORDER BY ((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date DESC`,
       params,
     )
 
@@ -510,8 +454,11 @@ export async function getSales(filters?: {
          s.change_given,
          s.payment_method,
          s.notes,
+         s.voided_at,
+         s.voided_by_id,
+         s.void_reason,
          s.created_at,
-         s.created_at::date::text AS sales_date,
+         (((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date)::text AS sales_date,
          (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id)::int AS items_count
        FROM sales s
        LEFT JOIN users u ON u.id = s.cashier_id
@@ -548,12 +495,8 @@ export async function getSales(filters?: {
 
 // ── getEffectiveUnitPrices ───────────────────────────────────────────────────
 //
-// The POS cart previews a total using product.selling_price, but createSale()
-// actually charges whatever the next FEFO batch's selling_price_override
-// resolves to (falling back to the product price if unset). Those two numbers
-// can silently diverge whenever a batch was intake'd with an overridden
-// selling price. This gives the cart the real, about-to-be-charged price for
-// each product so the on-screen total always matches the receipt.
+// The POS uses this only as a single-unit display hint. Quantity-aware carts
+// must use getSaleQuote(), because one basket can span multiple FEFO prices.
 
 export async function getEffectiveUnitPrices(
   productIds: string[],
@@ -578,8 +521,9 @@ export async function getEffectiveUnitPrices(
          ON b.product_id = p.id
          AND b.store_id = p.store_id
          AND b.qty_remaining > 0
+         AND p.track_inventory = true
        WHERE p.id = ANY($1) AND p.store_id = $2
-       ORDER BY p.id, b.expiry_date ASC NULLS LAST, b.received_at ASC`,
+       ORDER BY p.id, b.expiry_date ASC NULLS LAST, b.received_at ASC, b.id ASC`,
       [productIds, user.store_id],
     )
 
@@ -641,8 +585,11 @@ export async function getSaleById(
          s.change_given,
          s.payment_method,
          s.notes,
+         s.voided_at,
+         s.voided_by_id,
+         s.void_reason,
          s.created_at,
-         s.created_at::date::text AS sales_date,
+         (((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date)::text AS sales_date,
          (SELECT COUNT(*) FROM sale_items si WHERE si.sale_id = s.id)::int AS items_count
        FROM sales s
        LEFT JOIN users u ON u.id = s.cashier_id
@@ -700,77 +647,109 @@ export async function getSaleById(
   }
 }
 
-export async function deleteSale(
+export async function getSaleItems(
   saleId: string,
-  confirmationText: string,
+): Promise<{ success: true; data: SaleItemResult[] } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+
+  try {
+    const saleRes = await query(
+      `SELECT id, cashier_id FROM sales WHERE id = $1 AND store_id = $2 LIMIT 1`,
+      [saleId, user.store_id],
+    )
+    const sale = saleRes.rows[0]
+    if (!sale || (user.role === 'cashier' && sale.cashier_id !== user.id)) {
+      return { success: false, error: 'Sale not found.' }
+    }
+    const itemsRes = await query(
+      `SELECT si.product_id, p.name AS product_name, si.batch_id, b.batch_ref,
+              si.qty_sold, si.unit_price, si.line_total
+       FROM sale_items si
+       JOIN products p ON p.id = si.product_id
+       LEFT JOIN batches b ON b.id = si.batch_id
+       WHERE si.sale_id = $1
+       ORDER BY si.id ASC`,
+      [saleId],
+    )
+    return {
+      success: true,
+      data: itemsRes.rows.map((row) => ({
+        productId: row.product_id,
+        productName: row.product_name,
+        batchId: row.batch_id,
+        batchRef: row.batch_ref,
+        qtySold: row.qty_sold,
+        unitPrice: row.unit_price,
+        lineTotal: row.line_total,
+      })),
+    }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to fetch sale items.' }
+  }
+}
+
+export async function deleteSale(
+  _saleId: string,
+  _confirmationText: string,
 ): Promise<
   | { success: true; data: { receiptNumber: string } }
   | { success: false; error: string }
 > {
   const user = await getCurrentUser()
   if (!user) redirect('/sign-in')
-  if (user.role !== 'owner') {
-    return { success: false, error: 'Only the store owner can delete a sale.' }
-  }
-  if (!saleId || !confirmationText) {
-    return { success: false, error: 'Sale and confirmation are required.' }
+  return { success: false, error: 'Permanent sale deletion is disabled. Use an auditable void instead.' }
+}
+
+export async function voidSale(
+  saleId: string,
+  confirmationText: string,
+  reason: string,
+): Promise<{ success: true; data: { receiptNumber: string; voidedAt: string } } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  if (user.role !== 'owner') return { success: false, error: 'Only the store owner can void a sale.' }
+  const cleanedReason = reason?.trim()
+  if (!saleId || !confirmationText || !cleanedReason || cleanedReason.length < 3 || cleanedReason.length > 500) {
+    return { success: false, error: 'Sale, confirmation, and a reason (3–500 characters) are required.' }
   }
 
   try {
-    const receiptNumber = await withConnection(async (client: ClientBase) => {
-      await client.query('BEGIN')
-
-      try {
-        const saleRes = await client.query(
-          `SELECT id, receipt_number
-           FROM sales
-           WHERE id = $1 AND store_id = $2
-           FOR UPDATE`,
-          [saleId, user.store_id],
-        )
-        const sale = saleRes.rows[0]
-        if (!sale) throw new Error('Sale not found.')
-
-        const expectedConfirmation = `DELETE ${sale.receipt_number}`
-        if (confirmationText !== expectedConfirmation) {
-          throw new Error('The confirmation text does not match this receipt.')
-        }
-
-        // Return tracked quantities to the exact batches that supplied them.
-        // Untracked sale items have no batch_id and therefore need no stock
-        // adjustment. This UPDATE cannot create or delete any batch records.
-        await client.query(
-          `UPDATE batches b
-           SET qty_remaining = b.qty_remaining + restored.qty_sold
-           FROM (
-             SELECT si.batch_id, SUM(si.qty_sold)::int AS qty_sold
-             FROM sale_items si
-             WHERE si.sale_id = $1 AND si.batch_id IS NOT NULL
-             GROUP BY si.batch_id
-           ) restored
-           WHERE b.id = restored.batch_id AND b.store_id = $2`,
-          [saleId, user.store_id],
-        )
-
-        // sale_items are removed by their ON DELETE CASCADE foreign key. The
-        // batches themselves are never deleted by this operation.
-        await client.query(
-          'DELETE FROM sales WHERE id = $1 AND store_id = $2',
-          [saleId, user.store_id],
-        )
-
-        await client.query('COMMIT')
-        return sale.receipt_number as string
-      } catch (err) {
-        await client.query('ROLLBACK')
-        throw err
+    const result = await withTransaction(async (client: ClientBase) => {
+      const saleRes = await client.query(
+        `SELECT id, receipt_number, voided_at FROM sales
+         WHERE id = $1 AND store_id = $2 FOR UPDATE`, [saleId, user.store_id],
+      )
+      const sale = saleRes.rows[0]
+      if (!sale) throw new Error('Sale not found.')
+      if (sale.voided_at) throw new Error('This sale has already been voided.')
+      if (confirmationText !== `VOID ${sale.receipt_number}`) {
+        throw new Error('The confirmation text does not match this receipt.')
       }
-    })
 
-    return { success: true, data: { receiptNumber } }
+      const missing = await client.query(
+        `SELECT 1 FROM sale_items si LEFT JOIN batches b ON b.id = si.batch_id
+         WHERE si.sale_id = $1 AND si.batch_id IS NOT NULL AND b.id IS NULL LIMIT 1`, [saleId],
+      )
+      if (missing.rows.length) throw new Error('This sale references a missing inventory batch; void was not applied.')
+
+      await client.query(
+        `UPDATE batches b SET qty_remaining = b.qty_remaining + restored.qty_sold
+         FROM (SELECT batch_id, SUM(qty_sold)::int AS qty_sold FROM sale_items
+               WHERE sale_id = $1 AND batch_id IS NOT NULL GROUP BY batch_id) restored
+         WHERE b.id = restored.batch_id AND b.store_id = $2`, [saleId, user.store_id],
+      )
+      const update = await client.query(
+        `UPDATE sales SET voided_at = NOW(), voided_by_id = $3, void_reason = $4
+         WHERE id = $1 AND store_id = $2 AND voided_at IS NULL
+         RETURNING receipt_number, voided_at`, [saleId, user.store_id, user.id, cleanedReason],
+      )
+      if (update.rows.length !== 1) throw new Error('Sale changed before it could be voided.')
+      return { receiptNumber: update.rows[0].receipt_number as string, voidedAt: String(update.rows[0].voided_at) }
+    })
+    return { success: true, data: result }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete sale.'
-    return { success: false, error: message }
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to void sale.' }
   }
 }
 
@@ -789,7 +768,8 @@ export async function getRetainedSalesCsvRows(filters?: {
   try {
     const conditions: string[] = [
       's.store_id = $1',
-      "s.created_at >= NOW() - INTERVAL '720 hours'",
+      's.voided_at IS NULL',
+      "s.created_at >= NOW() - INTERVAL '2 years'",
     ]
     const params: unknown[] = [user.store_id]
     let idx = 2
@@ -805,13 +785,13 @@ export async function getRetainedSalesCsvRows(filters?: {
     }
 
     if (filters?.dateFrom) {
-      conditions.push(`s.created_at >= $${idx}::date`)
+      conditions.push(`s.created_at >= (($${idx}::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)`)
       params.push(filters.dateFrom)
       idx++
     }
 
     if (filters?.dateTo) {
-      conditions.push(`s.created_at < ($${idx}::date + INTERVAL '1 day')`)
+      conditions.push(`s.created_at < ((($${idx}::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)`)
       params.push(filters.dateTo)
       idx++
     }
@@ -855,5 +835,18 @@ export async function getRetainedSalesCsvRows(filters?: {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to export sales records.'
     return { success: false, error: message }
+  }
+}
+
+/** Quantity-aware server quote; no sale or inventory mutation. */
+export async function getSaleQuote(cartItems: CartItem[]): Promise<{ success: true; data: SaleQuote } | { success: false; error: string }> {
+  const user = await getCurrentUser()
+  if (!user) redirect('/sign-in')
+  try {
+    const data = await withTransaction(async client =>
+      quoteFromDeductions(await resolveSaleDeductions(client, user.store_id, cartItems)))
+    return { success: true, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Could not quote this cart.' }
   }
 }

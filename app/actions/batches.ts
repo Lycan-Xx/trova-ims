@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'crypto'
 import type { ClientBase } from 'pg'
-import { query, withConnection } from '@/lib/db'
+import { query, withTransaction } from '@/lib/db'
 import { requireStoreAccess } from '@/lib/auth'
 import type { Batch, Product, Vendor } from '@/lib/db/schema'
 
@@ -91,8 +91,7 @@ export async function createBatchSession(formData: {
   }
 
   try {
-    const data = await withConnection(async (client: ClientBase) => {
-      await client.query('BEGIN')
+    const data = await withTransaction(async (client: ClientBase) => {
 
       try {
         const sessionId = formData.lines.length > 1 ? randomUUID() : null
@@ -194,11 +193,8 @@ export async function createBatchSession(formData: {
             )
           }
         }
-
-        await client.query('COMMIT')
         return { sessionId, batches: createdBatches }
       } catch (err) {
-        await client.query('ROLLBACK')
         throw err
       }
     })

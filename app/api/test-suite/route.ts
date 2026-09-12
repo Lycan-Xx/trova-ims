@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { query, withConnection } from '@/lib/db/index'
+import { query, withTransaction } from '@/lib/db/index'
 import { generateSKU, generateReceiptNumber } from '@/lib/db/helpers'
 import {
   TestRunner,
@@ -138,15 +138,13 @@ async function dbCreateBatch(storeId: string, productId: string, vendorId: strin
 }
 
 async function dbCreateSale(storeId: string, userId: string, receiptNumber: string, total: number) {
-  const res = await withConnection(async (client) => {
-    await client.query('BEGIN')
+  const res = await withTransaction(async (client) => {
     const saleRes = await client.query(
       `INSERT INTO sales (id, store_id, receipt_number, cashier_id, total_amount, amount_paid, change_given, payment_method, created_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, $4, 0, 'cash', NOW())
        RETURNING *`,
       [storeId, receiptNumber, userId, total],
     )
-    await client.query('COMMIT')
     return saleRes
   })
   return res.rows[0]
@@ -495,8 +493,7 @@ export async function GET(req: NextRequest) {
       )
       const targetBatch = batchRes.rows[0]
 
-      await withConnection(async (client) => {
-        await client.query('BEGIN')
+      await withTransaction(async (client) => {
         await client.query(
           `INSERT INTO sale_items (id, sale_id, product_id, batch_id, qty_sold, unit_price, line_total)
            VALUES (gen_random_uuid(), $1, $2, $3, 3, 380, 1140)`,
@@ -506,7 +503,6 @@ export async function GET(req: NextRequest) {
           `UPDATE batches SET qty_remaining = qty_remaining - 3 WHERE id = $1`,
           [targetBatch.id],
         )
-        await client.query('COMMIT')
       })
 
       const updated = await query(`SELECT qty_remaining FROM batches WHERE id = $1`, [targetBatch.id])
@@ -536,8 +532,7 @@ export async function GET(req: NextRequest) {
       // Attempt to deduct more than available — should fail
       let threw = false
       try {
-        await withConnection(async (client) => {
-          await client.query('BEGIN')
+        await withTransaction(async (client) => {
           const res = await client.query(
             `SELECT SUM(qty_remaining) AS total FROM batches WHERE product_id = $1 AND store_id = $2`,
             [ctx.productId, ctx.storeId],
@@ -547,7 +542,6 @@ export async function GET(req: NextRequest) {
           if (requested > available) {
             throw new Error(`Insufficient stock: need ${requested}, have ${available}`)
           }
-          await client.query('COMMIT')
         })
       } catch {
         threw = true
@@ -639,6 +633,7 @@ export async function GET(req: NextRequest) {
         `SELECT COALESCE(SUM(total_amount), 0) AS revenue, COUNT(*) AS tx_count
          FROM sales
          WHERE store_id = $1
+           AND voided_at IS NULL
            AND created_at >= CURRENT_DATE
            AND created_at < CURRENT_DATE + INTERVAL '1 day'`,
         [ctx.storeId],

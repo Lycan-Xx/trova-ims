@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS sales (
   payment_method  TEXT NOT NULL DEFAULT 'cash',
   notes           TEXT,
   client_request_id TEXT,
+  voided_at       TIMESTAMPTZ,
+  voided_by_id    UUID,
+  void_reason     TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -180,6 +183,9 @@ ALTER TABLE sales ADD COLUMN IF NOT EXISTS cashier_id UUID;
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12, 2);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS change_given NUMERIC(12, 2);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS voided_by_id UUID;
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS void_reason TEXT;
 ALTER TABLE sale_items ALTER COLUMN batch_id DROP NOT NULL;
 
 -- Align databases created by early desktop builds with the canonical sales
@@ -224,6 +230,9 @@ CREATE INDEX IF NOT EXISTS idx_batches_intake_session
 CREATE INDEX IF NOT EXISTS idx_sales_store_id        ON sales(store_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request
   ON sales(store_id, client_request_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_receipt
+  ON sales(store_id, receipt_number);
+CREATE INDEX IF NOT EXISTS idx_sales_voided_at ON sales(store_id, voided_at);
 CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id    ON sale_items(sale_id);
 CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id);
 

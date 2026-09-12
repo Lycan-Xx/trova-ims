@@ -11,12 +11,12 @@
 // A second, independent PGlite database (trova-test.db) is opened the same
 // way for Test Mode (see lib/db/test-mode.ts) — same schema, same locking,
 // but no sales export/purge scheduling, since test data never leaves the
-// machine and isn't subject to the 30-day retention window.
+// machine and isn't subject to the two-year retention window.
 
 import { PGlite } from '@electric-sql/pglite'
 import { mkdirSync, openSync, readFileSync, closeSync, unlinkSync, writeSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { runDesktopSalesExportIfDue, scheduleDesktopSalesExport } from '../desktop-sales-export'
+import { runDesktopSalesExportIfDue, scheduleDesktopSalesExport, verifySalesArchiveCoverage } from '../desktop-sales-export'
 
 // ── Fixed IDs for the seeded local store + owner ──────────────────────────────
 // These match the VALUES in scripts/desktop-schema.sql — kept in one place
@@ -168,18 +168,28 @@ async function initializeDesktopDb(): Promise<PGlite> {
   try {
     db = await openPGliteDatabase(desktopDbState, dbPath, 'local')
 
-    // Export before purging. The local database intentionally retains only
-    // about 30 days of sales, so a failed Documents write must never be
-    // followed by deletion of the records that still need exporting.
+    // Preserve history until archive coverage can be verified. A successful
+    // incremental export alone is not evidence that all older sales are safe
+    // to delete (older builds could overwrite same-day archive windows).
     const exportResult = await runDesktopSalesExportIfDue(
       db,
       dirname(dbPath),
       DESKTOP_LOCAL_STORE_ID,
     )
+
     if (exportResult.success) {
-      await db.query(`DELETE FROM sales WHERE created_at < NOW() - INTERVAL '720 hours'`)
-    } else {
-      console.error('[desktop-db] Skipping expired-sales purge because the scheduled export failed.')
+      const cutoff = new Date()
+      cutoff.setFullYear(cutoff.getFullYear() - 2)
+      const coverage = await verifySalesArchiveCoverage(db, dirname(dbPath), DESKTOP_LOCAL_STORE_ID, cutoff)
+      if (coverage.covered) {
+        await db.query(
+          `DELETE FROM sales
+           WHERE store_id = $1 AND voided_at IS NULL AND created_at < $2`,
+          [DESKTOP_LOCAL_STORE_ID, cutoff.toISOString()],
+        )
+      } else {
+        console.error(`[desktop-db] Retention purge skipped: ${coverage.missing} active sale(s) lack verified archive coverage.`)
+      }
     }
 
     desktopDbState.db = db

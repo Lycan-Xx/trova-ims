@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useCurrency } from '@/lib/currency-context'
 import { getCurrencySymbol } from '@/lib/currency'
 import { getProducts, getProductByBarcode } from '@/app/actions/products'
-import { createSale, getEffectiveUnitPrices } from '@/app/actions/sales'
+import { createSale, getEffectiveUnitPrices, getSaleByRequestId, getSaleQuote, type SaleQuote } from '@/app/actions/sales'
 import { getStoreSettings } from '@/app/actions/settings'
 import type { ProductWithStock } from '@/app/actions/products'
 import {
@@ -17,6 +17,7 @@ import {
   saveCustomerDisplaySnapshot,
   type CustomerDisplayCart,
 } from '@/lib/customer-display'
+import { clearPendingCheckout, readPendingCheckout, savePendingCheckout, type PendingCheckout } from '@/lib/checkout-recovery'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -79,12 +80,41 @@ export default function NewSalePage() {
   const customerSaleCompletedRef = React.useRef(false)
   const customerSaleStartedAtRef = React.useRef(Date.now())
 
-  // Effective per-unit prices, keyed by product id. This is the price that
-  // will actually be charged (the next FEFO batch's override, if any) — it
-  // can differ from product.selling_price, so it's what the cart and search
-  // dropdown must display to avoid showing a total that doesn't match the
-  // receipt. Falls back to product.selling_price until it loads.
+  // Single-unit search hints only. Basket totals come from the server quote.
   const [effectivePrices, setEffectivePrices] = React.useState<Record<string, number>>({})
+  const [quote, setQuote] = React.useState<{ key: string; data: SaleQuote } | null>(null)
+  const [quoteError, setQuoteError] = React.useState<{ key: string; message: string } | null>(null)
+  const [quoteRevision, setQuoteRevision] = React.useState(0)
+  const cartKey = JSON.stringify(cart.map(e => ({ productId: e.product.id, qtySold: e.qty })))
+  const quoteKey = `${quoteRevision}:${cartKey}`
+  const quoteReady = quote?.key === quoteKey
+  const currentQuote = quoteReady ? quote.data : null
+
+  React.useEffect(() => {
+    let cancelled = false
+    if (!JSON.parse(cartKey).length) return
+    const timer = setTimeout(() => {
+      void getSaleQuote(JSON.parse(cartKey)).then(result => {
+        if (cancelled) return
+        if (result.success) {
+          setQuote({ key: quoteKey, data: result.data })
+          setQuoteError(null)
+        } else setQuoteError({ key: quoteKey, message: result.error })
+      }).catch(() => {
+        if (!cancelled) setQuoteError({ key: quoteKey, message: 'Could not load prices. Please retry.' })
+      })
+    }, 150)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [cartKey, quoteKey])
+
+  function quotedProduct(productId: string) {
+    const lines = currentQuote?.items.filter(item => item.productId === productId) ?? []
+    return {
+      total: lines.reduce((sum, line) => sum + Math.round(Number(line.lineTotal) * 100), 0) / 100,
+      priceLabel: !lines.length ? '…' : new Set(lines.map(line => line.unitPrice)).size > 1
+        ? 'Mixed prices' : `${getCurrencySymbol(currency)}${fmt(Number(lines[0].unitPrice))}`,
+    }
+  }
 
   function getPrice(product: ProductWithStock): number {
     const loaded = effectivePrices[product.id]
@@ -97,6 +127,8 @@ export default function NewSalePage() {
 
   // Submit state
   const [submitting, setSubmitting] = React.useState(false)
+  const [pendingCheckout, setPendingCheckout] = React.useState<PendingCheckout | null>(null)
+  const [recoveringCheckout, setRecoveringCheckout] = React.useState(false)
   const submissionInFlightRef = React.useRef(false)
   const checkoutRequestRef = React.useRef<{ fingerprint: string; requestId: string } | null>(null)
 
@@ -106,6 +138,10 @@ export default function NewSalePage() {
   // Autofocus on mount
   React.useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  React.useEffect(() => {
+    setPendingCheckout(readPendingCheckout())
   }, [])
 
   React.useEffect(() => {
@@ -191,6 +227,7 @@ export default function NewSalePage() {
   // ── Cart helpers ──────────────────────────────────────────────────────────────
 
   function addToCart(product: ProductWithStock) {
+    if (submissionInFlightRef.current) return
     if (productIsOutOfStock(product)) return
     setCart((prev) => {
       const existing = prev.find((e) => e.product.id === product.id)
@@ -210,6 +247,7 @@ export default function NewSalePage() {
   }
 
   function updateQty(productId: string, value: string) {
+    if (submissionInFlightRef.current) return
     const parsed = parseInt(value, 10)
     setCart((prev) =>
       prev.map((e) => {
@@ -222,15 +260,13 @@ export default function NewSalePage() {
   }
 
   function removeFromCart(productId: string) {
+    if (submissionInFlightRef.current) return
     setCart((prev) => prev.filter((e) => e.product.id !== productId))
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
-  const cartTotal = cart.reduce(
-    (sum, e) => sum + e.qty * getPrice(e.product),
-    0,
-  )
+  const cartTotal = Number(currentQuote?.totalAmount ?? 0)
 
   React.useEffect(() => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
@@ -240,14 +276,12 @@ export default function NewSalePage() {
     const payload: CustomerDisplayCart = {
       storeName,
       currencySymbol: getCurrencySymbol(currency),
-      items: cart.map((entry) => ({
-        name: entry.product.name,
-        quantity: entry.qty,
-        unitPrice: getPrice(entry.product),
-        total: entry.qty * getPrice(entry.product),
+      items: (currentQuote?.items ?? []).map(item => ({
+        name: item.productName, quantity: item.qtySold,
+        unitPrice: Number(item.unitPrice), total: Number(item.lineTotal),
       })),
       total: cartTotal,
-      status: cart.length > 0 ? 'cart' : 'idle',
+      status: currentQuote && cart.length > 0 ? 'cart' : 'idle',
       saleStartedAt: customerSaleStartedAtRef.current,
     }
     customerDisplayPayloadRef.current = payload
@@ -260,8 +294,8 @@ export default function NewSalePage() {
       if (!customerSaleCompletedRef.current) {
         return emit(CUSTOMER_DISPLAY_EVENT, payload)
       }
-    })
-  }, [cart, cartTotal, currency, effectivePrices, storeName])
+    }).catch(() => { /* Customer display failure must not change checkout state. */ })
+  }, [cart.length, cartTotal, currency, currentQuote, storeName])
 
   React.useEffect(() => () => {
     if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
@@ -289,7 +323,7 @@ export default function NewSalePage() {
   const exactCashAmount =
     paymentMethod !== 'cash' || (amountPaid !== '' && amountPaidCents === cartTotalCents)
   const canSubmit =
-    cart.length > 0 && !hasQtyErrors && !submitting &&
+    cart.length > 0 && quoteReady && !hasQtyErrors && !submitting &&
     exactCashAmount
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -302,12 +336,14 @@ export default function NewSalePage() {
       items: cart.map((entry) => ({ productId: entry.product.id, qty: entry.qty })),
       paymentMethod,
       amountPaidCents,
+      cartTotalCents,
     })
     const previousRequest = checkoutRequestRef.current
     const requestId = previousRequest?.fingerprint === fingerprint
       ? previousRequest.requestId
       : createCheckoutRequestId()
     checkoutRequestRef.current = { fingerprint, requestId }
+    savePendingCheckout({ requestId, fingerprint, createdAt: Date.now() })
     let completed = false
     try {
       const res = await createSale(
@@ -315,19 +351,26 @@ export default function NewSalePage() {
         paymentMethod,
         amountPaidNum,
         requestId,
+        cartTotal,
       )
       if (res.success) {
+        // Recording succeeded. Display/event errors must never turn this into
+        // a failed checkout or re-enable the completed basket for submission.
+        completed = true
+        clearPendingCheckout()
+        setPendingCheckout(null)
+        customerSaleCompletedRef.current = true
         if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
           const completionPayload: CustomerDisplayCart = {
             storeName,
             currencySymbol: getCurrencySymbol(currency),
-            items: cart.map((entry) => ({
-              name: entry.product.name,
-              quantity: entry.qty,
-              unitPrice: getPrice(entry.product),
-              total: entry.qty * getPrice(entry.product),
+            items: res.data.items.map((item) => ({
+              name: item.productName,
+              quantity: item.qtySold,
+              unitPrice: Number(item.unitPrice),
+              total: Number(item.lineTotal),
             })),
-            total: cartTotal,
+            total: Number(res.data.totalAmount),
             status: 'complete',
             receiptNumber: res.data.receiptNumber,
             paymentMethod,
@@ -336,23 +379,56 @@ export default function NewSalePage() {
           }
           customerSaleCompletedRef.current = true
           customerDisplayPayloadRef.current = completionPayload
-          saveCustomerDisplaySnapshot(completionPayload)
-          const { emit } = await import('@tauri-apps/api/event')
-          await emit(CUSTOMER_DISPLAY_EVENT, completionPayload)
+          try {
+            saveCustomerDisplaySnapshot(completionPayload)
+            const { emit } = await import('@tauri-apps/api/event')
+            await emit(CUSTOMER_DISPLAY_EVENT, completionPayload)
+          } catch {
+            toast.warning('Sale recorded, but the customer display could not be updated.')
+          }
         }
         toast.success(`Sale recorded — ${res.data.receiptNumber}`)
         completed = true
         router.push(`/sales/${res.data.saleId}`)
       } else {
+        clearPendingCheckout()
+        setPendingCheckout(null)
         toast.error(res.error)
+        setQuoteRevision(value => value + 1)
       }
     } catch {
-      toast.error('An unexpected error occurred.')
+      setPendingCheckout(readPendingCheckout())
+      toast.error('Checkout outcome is uncertain. Use “Recover checkout” before trying again.')
     } finally {
       if (!completed) {
         submissionInFlightRef.current = false
         setSubmitting(false)
       }
+    }
+  }
+
+  async function recoverPendingCheckout() {
+    const pending = pendingCheckout ?? readPendingCheckout()
+    if (!pending || recoveringCheckout) return
+    setRecoveringCheckout(true)
+    try {
+      const result = await getSaleByRequestId(pending.requestId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      clearPendingCheckout()
+      setPendingCheckout(null)
+      if (result.data) {
+        toast.success(`Checkout found — ${result.data.receiptNumber}`)
+        router.replace(`/sales/${result.data.saleId}`)
+      } else {
+        toast.info('No committed sale was found. You can safely start a new checkout.')
+      }
+    } catch {
+      toast.error('Could not check checkout status. Keep the recovery notice and try again.')
+    } finally {
+      setRecoveringCheckout(false)
     }
   }
 
@@ -363,6 +439,28 @@ export default function NewSalePage() {
       className="flex flex-col md:flex-row h-[calc(100vh-48px)] overflow-hidden relative"
       style={{ background: 'var(--bg-base)' }}
     >
+      {pendingCheckout && (
+        <div
+          className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-6 py-3 text-sm"
+          style={{ background: 'var(--warning-bg)', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}
+          role="alert"
+        >
+          <span>Previous checkout may still be processing. Confirm its result before starting another sale.</span>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" className="font-semibold" disabled={recoveringCheckout} onClick={() => void recoverPendingCheckout()}>
+              {recoveringCheckout ? 'Checking…' : 'Recover checkout'}
+            </button>
+            <button
+              type="button"
+              className="rounded-md px-2 py-1"
+              disabled={recoveringCheckout}
+              onClick={() => { clearPendingCheckout(); setPendingCheckout(null) }}
+            >
+              Start new sale
+            </button>
+          </div>
+        </div>
+      )}
       {/* ── LEFT COLUMN ────────────────────────────────────────────────────── */}
       <div
         className="flex flex-col w-full md:w-[55%]"
@@ -633,7 +731,7 @@ export default function NewSalePage() {
               </div>
 
               {cart.map((entry) => {
-                const lineTotal = entry.qty * getPrice(entry.product)
+                const lineTotal = quotedProduct(entry.product.id).total
                 return (
                   <div key={entry.product.id}>
                     <div
@@ -661,6 +759,7 @@ export default function NewSalePage() {
                           min={1}
                           max={tracksInventory(entry.product) ? entry.product.current_stock : undefined}
                           value={entry.qty}
+                          disabled={submitting}
                           onChange={(e) => updateQty(entry.product.id, e.target.value)}
                           className="w-16 h-8 text-center text-sm rounded-md outline-none"
                           style={{
@@ -673,12 +772,12 @@ export default function NewSalePage() {
 
                       {/* Unit price */}
                       <p className="text-sm text-right" style={{ color: 'var(--text-secondary)' }}>
-                        {getCurrencySymbol(currency)}{fmt(getPrice(entry.product))}
+                        {quotedProduct(entry.product.id).priceLabel}
                       </p>
 
                       {/* Line total */}
                       <p className="text-sm font-semibold text-right" style={{ color: 'var(--text-primary)' }}>
-                        {getCurrencySymbol(currency)}{fmt(lineTotal)}
+                        {quoteReady ? `${getCurrencySymbol(currency)}${fmt(lineTotal)}` : '…'}
                       </p>
 
                       {/* Remove */}
@@ -761,18 +860,18 @@ export default function NewSalePage() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {cart.map((entry) => {
-                const unitPrice = getPrice(entry.product)
-                const lineTotal = entry.qty * unitPrice
+                const quoted = quotedProduct(entry.product.id)
+                const lineTotal = quoted.total
                 return (
                   <div key={entry.product.id} className="flex items-center justify-between gap-3">
                     <span className="text-xs truncate min-w-0" style={{ color: 'var(--text-secondary)' }}>
                       {entry.product.name}
                     </span>
                     <span className="text-xs whitespace-nowrap shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {entry.qty} × {getCurrencySymbol(currency)}{fmt(unitPrice)}
+                      {entry.qty} × {quoted.priceLabel}
                     </span>
                     <span className="text-xs font-medium whitespace-nowrap shrink-0" style={{ color: 'var(--text-primary)' }}>
-                      {getCurrencySymbol(currency)}{fmt(lineTotal)}
+                      {quoteReady ? `${getCurrencySymbol(currency)}${fmt(lineTotal)}` : '…'}
                     </span>
                   </div>
                 )
@@ -880,6 +979,14 @@ export default function NewSalePage() {
           )}
 
           {/* Complete Sale button */}
+          {cart.length > 0 && !quoteReady && (
+            <div className="text-sm" role="status">
+              {quoteError?.key === quoteKey ? quoteError.message : 'Updating prices…'}
+              {quoteError?.key === quoteKey && (
+                <button type="button" className="underline ml-2" onClick={() => setQuoteRevision(v => v + 1)}>Retry quote</button>
+              )}
+            </div>
+          )}
           <button
             onClick={handleSubmit}
             disabled={!canSubmit}

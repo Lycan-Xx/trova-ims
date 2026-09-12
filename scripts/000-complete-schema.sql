@@ -151,6 +151,10 @@ CREATE TABLE IF NOT EXISTS sales (
   change_given   DECIMAL(12,2),
   payment_method TEXT NOT NULL DEFAULT 'cash',
   notes          TEXT,
+  client_request_id TEXT,
+  voided_at      TIMESTAMPTZ,
+  voided_by_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+  void_reason    TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -158,6 +162,8 @@ CREATE INDEX IF NOT EXISTS idx_sales_store_id ON sales(store_id);
 CREATE INDEX IF NOT EXISTS idx_sales_cashier_id ON sales(cashier_id);
 CREATE INDEX IF NOT EXISTS idx_sales_receipt_number ON sales(receipt_number);
 CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request ON sales(store_id, client_request_id);
+CREATE INDEX IF NOT EXISTS idx_sales_voided_at ON sales(store_id, voided_at);
 
 -- Sale Items: Line items for each sale transaction
 CREATE TABLE IF NOT EXISTS sale_items (

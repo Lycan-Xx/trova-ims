@@ -55,6 +55,16 @@ commands:
           paths:
             - node_modules
 
+  verify-web:
+    description: "Run web type, lint, and build-configuration checks"
+    steps:
+      - run:
+          name: Verify TypeScript and ESLint
+          command: |
+            npx tsc --noEmit
+            npm run lint
+            node scripts/validate-build-setup.mjs
+
   install-rust:
     description: "Install Rust toolchain"
     steps:
@@ -150,6 +160,7 @@ jobs:
       - install-rust
       - install-linux-deps
       - install-node-deps
+      - verify-web
       - restore_cache:
           keys:
             - rust-build-linux-safe-{{ checksum "src-tauri/Cargo.lock" }}
@@ -221,6 +232,7 @@ jobs:
           key: npm-deps-win-{{ checksum "package-lock.json" }}
           paths:
             - node_modules
+      - verify-web
       - restore_cache:
           keys:
             - rust-build-windows-msvc-safe-{{ checksum "src-tauri/Cargo.lock" }}

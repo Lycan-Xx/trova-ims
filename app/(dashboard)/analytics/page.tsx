@@ -4,11 +4,12 @@ import { requireOwner } from '@/lib/auth'
 import { getSalesAnalytics, getVendorAnalytics, getExpiryRisk } from '@/app/actions/analytics'
 import { AnalyticsPanels } from '@/components/analytics/analytics-panels'
 import { DateRangeFilter } from '@/components/analytics/date-range-filter'
+import { businessDate } from '@/lib/business-date'
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0]
+  return businessDate(d)
 }
 
 function resolveRange(preset: string, from?: string, to?: string): { dateFrom: string; dateTo: string } {
