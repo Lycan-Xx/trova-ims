@@ -122,11 +122,11 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
 
   return (
     <main
-      className="min-h-screen flex flex-col overflow-hidden"
+      className="box-border flex h-dvh min-h-0 w-full flex-col overflow-hidden"
       style={{ background: '#111111', color: '#ffffff', borderTop: '6px solid #f5610a' }}
     >
-      <header className="flex items-center justify-between gap-6 px-8 py-6 md:px-12" style={{ borderBottom: '1px solid #2e2e2e' }}>
-        <div className="min-w-0">
+      <header className="flex shrink-0 items-center justify-between gap-6 px-8 py-6 md:px-12" style={{ borderBottom: '1px solid #2e2e2e' }}>
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase" style={{ color: '#f5610a', letterSpacing: '0.1em' }}>
             {isComplete ? 'Transaction complete' : hasOrder ? 'Current order' : 'Customer display'}
           </p>
@@ -140,7 +140,7 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
         ) : null}
       </header>
 
-      <section className="flex flex-1 flex-col px-8 py-8 md:px-12 md:py-10" aria-live="polite">
+      <section className="flex min-h-0 flex-1 flex-col px-8 py-8 md:px-12 md:py-10" aria-live="polite">
         {isComplete ? (
           <div className="m-auto flex w-full max-w-2xl flex-col items-center text-center">
             <div className="flex h-24 w-24 items-center justify-center rounded-full" style={{ background: '#163522', color: '#86efac' }}>
@@ -160,7 +160,7 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
             ) : null}
           </div>
         ) : hasOrder ? (
-          <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
             <div className="flex items-end justify-between gap-6 pb-5" style={{ borderBottom: '1px solid #2e2e2e' }}>
               <div>
                 <h2 className="text-2xl font-bold md:text-3xl">Your order</h2>
@@ -168,7 +168,7 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
               </div>
               <p className="hidden text-sm font-medium md:block" style={{ color: '#a3a3a3' }}>Amount</p>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
               {cart.items.map((item) => (
                 <div key={`${item.name}-${item.unitPrice}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 py-5" style={{ borderBottom: '1px solid #252525' }}>
                   <div className="min-w-0">
@@ -203,7 +203,7 @@ export function CustomerDisplayView({ storeName, currencySymbol }: { storeName: 
         )}
       </section>
 
-      <footer className="px-8 py-6 text-center md:px-12" style={{ borderTop: '1px solid #2e2e2e' }}>
+      <footer className="shrink-0 px-8 py-6 text-center md:px-12" style={{ borderTop: '1px solid #2e2e2e' }}>
         <TrovaBrand />
         <p className="mt-3 text-xs" style={{ color: '#737373' }}>Trova IMS is built and managed by LycanForge.</p>
       </footer>

@@ -51,8 +51,6 @@ export function CustomerDisplaySetup() {
         toast.error('No display is currently available.')
         return
       }
-      const singleDisplay = found.length === 1
-
       saveCustomerDisplaySettings({ enabled: true, monitorIndex: found.indexOf(monitor) })
       setSettings(getCustomerDisplaySettings())
 
@@ -61,8 +59,9 @@ export function CustomerDisplaySetup() {
         const createdWindow = new WebviewWindow('customer-display', {
           title: 'Trova IMS Customer Display',
           url: `${window.location.origin}/customer-display`,
-          decorations: singleDisplay,
-          resizable: singleDisplay,
+          decorations: false,
+          resizable: false,
+          fullscreen: true,
         })
         customerWindow = createdWindow
         await new Promise<void>((resolve, reject) => {
@@ -78,23 +77,14 @@ export function CustomerDisplaySetup() {
       }
 
       try {
-        const width = singleDisplay
-          ? Math.min(960, Math.floor(monitor.size.width * 0.84))
-          : monitor.size.width
-        const height = singleDisplay
-          ? Math.min(700, Math.floor(monitor.size.height * 0.82))
-          : monitor.size.height
-        const x = singleDisplay
-          ? monitor.position.x + Math.floor((monitor.size.width - width) / 2)
-          : monitor.position.x
-        const y = singleDisplay
-          ? monitor.position.y + Math.floor((monitor.size.height - height) / 2)
-          : monitor.position.y
-
-        await customerWindow.setDecorations(singleDisplay)
-        await customerWindow.setResizable(singleDisplay)
-        await customerWindow.setPosition(new PhysicalPosition(x, y))
-        await customerWindow.setSize(new PhysicalSize(width, height))
+        // Move the window to the selected monitor before entering native
+        // fullscreen. This keeps reopening/reselecting a monitor predictable.
+        await customerWindow.setFullscreen(false)
+        await customerWindow.setDecorations(false)
+        await customerWindow.setResizable(false)
+        await customerWindow.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y))
+        await customerWindow.setSize(new PhysicalSize(monitor.size.width, monitor.size.height))
+        await customerWindow.setFullscreen(true)
         await customerWindow.setFocus()
       } catch {
         toast.warning('Customer Display opened, but could not be positioned on the selected monitor.')
@@ -165,8 +155,8 @@ export function CustomerDisplaySetup() {
         </button>
         {!supported ? (
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer Display is available in the desktop app.</p>
-        ) : monitors.length === 1 ? (
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer Display will open in a separate window on this display.</p>
+        ) : monitors.length > 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer Display opens fullscreen on the selected display and hides the taskbar.</p>
         ) : null}
       </div>
     </section>
