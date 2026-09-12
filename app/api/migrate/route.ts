@@ -124,15 +124,22 @@ const STATEMENTS = [
     payment_method TEXT NOT NULL DEFAULT 'cash',
     notes          TEXT,
     client_request_id TEXT,
+    voided_at      TIMESTAMPTZ,
+    voided_by_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+    void_reason    TEXT,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_request_id TEXT`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS voided_by_id UUID`,
+  `ALTER TABLE sales ADD COLUMN IF NOT EXISTS void_reason TEXT`,
   `CREATE INDEX IF NOT EXISTS idx_sales_store_id       ON sales(store_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_cashier_id     ON sales(cashier_id)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_receipt_number ON sales(receipt_number)`,
   `CREATE INDEX IF NOT EXISTS idx_sales_created_at     ON sales(created_at DESC)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_store_client_request
     ON sales(store_id, client_request_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sales_voided_at ON sales(store_id, voided_at)`,
 
   `CREATE TABLE IF NOT EXISTS sale_items (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

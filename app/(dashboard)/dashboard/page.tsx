@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getOnboardingState } from '@/lib/actions/onboarding'
 import { OnboardingJoyride } from '@/components/dashboard/onboarding-joyride'
 import { getCurrencySymbol, formatCurrency } from '@/lib/currency'
+import { businessDate } from '@/lib/business-date'
 
 function fmtCurrency(n: number, symbol: string): string {
   return symbol + n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -21,7 +22,7 @@ function fmtTrend(current: number, previous: number): number | undefined {
 
 // Build YYYY-MM-DD strings for date ranges
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return businessDate(d)
 }
 
 export default async function DashboardPage() {

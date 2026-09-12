@@ -1,7 +1,8 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile, link, readdir } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 
 export const DESKTOP_SALES_EXPORT_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 const EXPORT_RETRY_INTERVAL_MS = 60 * 60 * 1000
@@ -29,6 +30,37 @@ type ExportRow = {
   payment_method: string
   sale_total: string
   cashier_name: string | null
+}
+
+export type SalesExportManifest = {
+  version: 1
+  storeId: string
+  windowStart: string
+  windowEnd: string
+  csvFile: string
+  sha256: string
+  rows: number
+  transactions: number
+  receipts: string[]
+  lineTotal: string
+  saleTotal: string
+  createdAt: string
+}
+
+type ExportDatabase = Pick<PGlite, 'query'>
+const exportGlobal = globalThis as typeof globalThis & {
+  __trovaSalesExportJobs?: Map<string, Promise<unknown>>
+}
+const exportJobs = exportGlobal.__trovaSalesExportJobs ??= new Map()
+
+// Shared across route bundles and both close-time/scheduled entry points.
+async function serializedExport(key: string, fn: () => Promise<ExportResult>): Promise<ExportResult> {
+  const previous = exportJobs.get(key) ?? Promise.resolve()
+  const job = previous.catch(() => {}).then(fn)
+  exportJobs.set(key, job)
+  try { return await job } finally {
+    if (exportJobs.get(key) === job) exportJobs.delete(key)
+  }
 }
 
 const schedulerGlobal = globalThis as typeof globalThis & {
@@ -81,7 +113,7 @@ function csvForRows(rows: ExportRow[]): string {
     'Cashier',
   ]
 
-  const lines = [headers]
+  const lines: unknown[][] = [headers]
   for (const row of rows) {
     const createdAt = new Date(row.created_at)
     lines.push([
@@ -113,11 +145,13 @@ function getStatePath(dataDirectory: string): string {
 async function readExportState(statePath: string): Promise<ExportState | null> {
   try {
     const parsed = JSON.parse(await readFile(statePath, 'utf8')) as Partial<ExportState>
-    if (typeof parsed.lastExportEndAt !== 'string') return null
+    if (typeof parsed.lastExportEndAt !== 'string') throw new Error('Invalid sales export state. Preserve the state file for investigation.')
     const timestamp = new Date(parsed.lastExportEndAt).getTime()
-    return Number.isFinite(timestamp) ? { lastExportEndAt: parsed.lastExportEndAt } : null
-  } catch {
-    return null
+    if (!Number.isFinite(timestamp)) throw new Error('Invalid sales export timestamp.')
+    return { lastExportEndAt: parsed.lastExportEndAt }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
   }
 }
 
@@ -143,12 +177,21 @@ async function replaceFile(temporaryPath: string, targetPath: string): Promise<v
 }
 
 async function writeSalesWindow(
-  db: PGlite,
+  db: ExportDatabase,
   storeId: string,
   storeName: string,
   start: Date,
   end: Date,
 ): Promise<void> {
+  const inconsistent = await db.query(
+    `SELECT s.id FROM sales s LEFT JOIN sale_items si ON si.sale_id = s.id
+     WHERE s.store_id = $1 AND s.voided_at IS NULL AND s.created_at >= $2 AND s.created_at < $3
+     GROUP BY s.id, s.total_amount
+     HAVING COUNT(si.id) = 0 OR SUM(si.line_total) <> s.total_amount
+       OR BOOL_OR(si.qty_sold <= 0 OR si.qty_sold * si.unit_price <> si.line_total)
+     LIMIT 1`, [storeId, start.toISOString(), end.toISOString()],
+  )
+  if (inconsistent.rows.length) throw new Error('Sales integrity check failed. Preserve the database and investigate before exporting this window.')
   const result = await db.query(
     `SELECT
        s.created_at,
@@ -165,28 +208,102 @@ async function writeSalesWindow(
      JOIN products p ON p.id = si.product_id
      LEFT JOIN users u ON u.id = s.cashier_id
      WHERE s.store_id = $1
+       AND s.voided_at IS NULL
        AND s.created_at >= $2
        AND s.created_at < $3
-     ORDER BY s.created_at ASC, s.receipt_number ASC, p.name ASC`,
+     ORDER BY s.created_at ASC, s.receipt_number ASC, p.name ASC, si.id ASC`,
     [storeId, start.toISOString(), end.toISOString()],
   )
 
   const rows = result.rows as unknown as ExportRow[]
   const folderName = `${safePathPart(storeName, 'Store')}_${formatFolderDate(new Date(end.getTime() - 1))}`
-  const fileName = `sales-${formatIsoDate(start)}-to-${formatIsoDate(new Date(end.getTime() - 1))}.csv`
+  const stamp = (date: Date) => date.toISOString().replace(/[:.]/g, '-')
+  const fileName = `sales-${stamp(start)}-to-${stamp(end)}.csv`
   const directory = join(getDocumentsDirectory(), RECORDS_DIRECTORY_NAME, folderName)
   const targetPath = join(directory, fileName)
-  const temporaryPath = `${targetPath}.${process.pid}.tmp`
-
   await mkdir(directory, { recursive: true })
-  await writeFile(temporaryPath, csvForRows(rows), 'utf8')
-  await replaceFile(temporaryPath, targetPath)
+  const content = csvForRows(rows)
+  await publishImmutableFile(targetPath, content)
+
+  const receipts = [...new Set(rows.map((row) => row.receipt_number))].sort()
+  const lineTotalCents = rows.reduce((sum, row) => sum + Math.round(Number(row.line_total) * 100), 0)
+  const saleTotals = new Map<string, number>()
+  for (const row of rows) saleTotals.set(row.receipt_number, Math.round(Number(row.sale_total) * 100))
+  const saleTotalCents = [...saleTotals.values()].reduce((sum, value) => sum + value, 0)
+  const manifest: SalesExportManifest = {
+    version: 1,
+    storeId,
+    windowStart: start.toISOString(),
+    windowEnd: end.toISOString(),
+    csvFile: fileName,
+    sha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+    rows: rows.length,
+    transactions: receipts.length,
+    receipts,
+    lineTotal: (lineTotalCents / 100).toFixed(2),
+    saleTotal: (saleTotalCents / 100).toFixed(2),
+    createdAt: new Date().toISOString(),
+  }
+  await publishImmutableFile(`${targetPath}.manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`)
 
   console.log(`[desktop-sales-export] Wrote ${rows.length} line item(s) to ${targetPath}`)
 }
 
-export async function runDesktopSalesExportIfDue(
-  db: PGlite,
+async function collectManifestPaths(directory: string): Promise<string[]> {
+  const paths: string[] = []
+  let entries
+  try { entries = await readdir(directory, { withFileTypes: true }) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return paths
+    throw error
+  }
+  for (const entry of entries) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) paths.push(...await collectManifestPaths(path))
+    else if (entry.isFile() && entry.name.endsWith('.csv.manifest.json')) paths.push(path)
+  }
+  return paths
+}
+
+export async function verifySalesArchiveCoverage(
+  db: ExportDatabase,
+  _dataDirectory: string,
+  storeId: string,
+  cutoff: Date,
+): Promise<{ covered: boolean; missing: number }> {
+  const activeSales = await db.query(
+    `SELECT receipt_number FROM sales
+     WHERE store_id = $1 AND voided_at IS NULL AND created_at < $2`,
+    [storeId, cutoff.toISOString()],
+  )
+  const required = new Set((activeSales.rows as Array<{ receipt_number: string }>).map((row) => String(row.receipt_number)))
+  if (!required.size) return { covered: true, missing: 0 }
+
+  const covered = new Set<string>()
+  const recordsDirectory = join(getDocumentsDirectory(), RECORDS_DIRECTORY_NAME)
+  for (const manifestPath of await collectManifestPaths(recordsDirectory)) {
+    try {
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Partial<SalesExportManifest>
+      if (
+        manifest.version !== 1 || manifest.storeId !== storeId || !Array.isArray(manifest.receipts) ||
+        typeof manifest.csvFile !== 'string' || typeof manifest.sha256 !== 'string'
+      ) continue
+      const csvPath = join(dirname(manifestPath), manifest.csvFile)
+      const csvContent = await readFile(csvPath, 'utf8')
+      if (createHash('sha256').update(csvContent, 'utf8').digest('hex') !== manifest.sha256) {
+        console.error(`[desktop-sales-export] Hash mismatch for archive ${csvPath}`)
+        continue
+      }
+      for (const receipt of manifest.receipts) covered.add(String(receipt))
+    } catch (error) {
+      console.error(`[desktop-sales-export] Ignoring unreadable archive manifest ${manifestPath}:`, error)
+    }
+  }
+  const missing = [...required].filter((receipt) => !covered.has(receipt)).length
+  return { covered: missing === 0, missing }
+}
+
+async function exportIfDue(
+  db: ExportDatabase,
   dataDirectory: string,
   storeId: string,
   now = new Date(),
@@ -246,8 +363,8 @@ export async function runDesktopSalesExportIfDue(
   }
 }
 
-export async function runDesktopSalesExportNow(
-  db: PGlite,
+async function exportNow(
+  db: ExportDatabase,
   dataDirectory: string,
   storeId: string,
   now = new Date(),
@@ -292,6 +409,42 @@ export async function runDesktopSalesExportNow(
     console.error(`[desktop-sales-export] Close-time export failed: ${message}`)
     return { success: false, due: true, nextDelayMs: EXPORT_RETRY_INTERVAL_MS, error: message }
   }
+}
+
+async function exportSafely(db: PGlite, dataDirectory: string, storeId: string, now: Date, dueOnly: boolean): Promise<ExportResult> {
+  return serializedExport(`${dataDirectory}:${storeId}`, async () => {
+    try {
+      // PGlite serializes a query against an active native transaction. The
+      // exporter itself must not perform filesystem writes inside a DB
+      // transaction: an archive can otherwise be published before commit.
+      return await (dueOnly ? exportIfDue : exportNow)(db, dataDirectory, storeId, now)
+    } catch (error) {
+      return { success: false, due: true, nextDelayMs: EXPORT_RETRY_INTERVAL_MS, error: error instanceof Error ? error.message : String(error) }
+    }
+  })
+}
+
+async function publishImmutableFile(targetPath: string, content: string): Promise<void> {
+  const temporaryPath = `${targetPath}.${randomUUID()}.tmp`
+  await writeFile(temporaryPath, content, { encoding: 'utf8', flag: 'wx' })
+  try {
+    try { await link(temporaryPath, targetPath) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      if (await readFile(targetPath, 'utf8') !== content) {
+        throw new Error(`An archive artifact already exists at ${targetPath} with different contents. It was preserved.`)
+      }
+    }
+  } finally {
+    await rm(temporaryPath, { force: true })
+  }
+}
+
+export async function runDesktopSalesExportIfDue(db: PGlite, dataDirectory: string, storeId: string, now = new Date()): Promise<ExportResult> {
+  return exportSafely(db, dataDirectory, storeId, now, true)
+}
+
+export async function runDesktopSalesExportNow(db: PGlite, dataDirectory: string, storeId: string, now = new Date()): Promise<ExportResult> {
+  return exportSafely(db, dataDirectory, storeId, now, false)
 }
 
 export function scheduleDesktopSalesExport(

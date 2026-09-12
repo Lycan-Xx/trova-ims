@@ -25,7 +25,7 @@ export async function getOnboardingState(): Promise<{ success: true; data: Onboa
     const vendorsRes = await query(`SELECT COUNT(*)::int as count FROM vendors WHERE store_id = $1`, [user.store_id])
     const productsRes = await query(`SELECT COUNT(*)::int as count FROM products WHERE store_id = $1`, [user.store_id])
     const batchesRes = await query(`SELECT COUNT(*)::int as count FROM batches WHERE store_id = $1`, [user.store_id])
-    const salesRes = await query(`SELECT COUNT(*)::int as count FROM sales WHERE store_id = $1`, [user.store_id])
+    const salesRes = await query(`SELECT COUNT(*)::int as count FROM sales WHERE store_id = $1 AND voided_at IS NULL`, [user.store_id])
 
     // If they changed the default name from "My Store" or if they have vendors/products, we consider store setup done
     const hasStoreSetup = store.name !== 'My Store' || vendorsRes.rows[0].count > 0 || store.currency !== 'NGN'

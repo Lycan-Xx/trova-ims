@@ -4,7 +4,7 @@
 // desktop module graph entirely.
 import type { Pool as PgPool, ClientBase } from 'pg'
 import * as schema from './schema'
-import { desktopQuery, desktopTestQuery } from './desktop-init'
+import { desktopQuery, desktopTestQuery, getDesktopDb, getDesktopTestDb } from './desktop-init'
 import { isTestModeEnabled } from './test-mode'
 
 // ── Desktop mode ──────────────────────────────────────────────────────────────
@@ -12,9 +12,8 @@ import { isTestModeEnabled } from './test-mode'
 // the Next.js server. Every query is routed to the local PGlite database
 // instead — no cloud connection, no auth, no internet needed.
 //
-// In this mode `pool`, `db` (Drizzle), and `withConnection` are not
-// initialised — they'll throw if anything accidentally tries to use them
-// directly, which makes misconfiguration obvious rather than silent.
+// In this mode pool and Drizzle are not initialized. query(),
+// withConnection(), and withTransaction() route to the local database.
 
 export const IS_DESKTOP = process.env.DESKTOP_MODE === 'true'
 
@@ -119,18 +118,7 @@ export async function query(text: string, params?: unknown[]) {
   }
 }
 
-/** Multi-statement transactions.
- *
- * Cloud (pool): acquires a dedicated connection, runs fn(client), releases.
- *
- * Desktop (PGlite): wraps fn() in a PGlite transaction. PGlite doesn't
- * expose a pg-compatible Client object, so we shim one — the callback
- * receives an object whose .query() method delegates to desktopQuery() (or
- * desktopTestQuery() when Test Mode is on), which runs against the same
- * singleton PGlite database. BEGIN/COMMIT/ROLLBACK issued by the callback
- * are executed as ordinary queries, which PGlite handles correctly in its
- * single-connection, synchronous model.
- */
+/** Non-transactional connection work. Use withTransaction for atomic work. */
 export async function withConnection<T>(
   fn: (client: ClientBase) => Promise<T>,
 ): Promise<T> {
@@ -138,6 +126,9 @@ export async function withConnection<T>(
     const activeQuery = isTestModeEnabled() ? desktopTestQuery : desktopQuery
     const shimClient = {
       async query(text: string, params?: unknown[]) {
+        if (/^\s*(BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK)\b/i.test(text)) {
+          throw new Error('Use withTransaction for desktop transactions.')
+        }
         return activeQuery(text, params)
       },
     } as unknown as ClientBase
@@ -148,5 +139,41 @@ export async function withConnection<T>(
     return await fn(client)
   } finally {
     client.release()
+  }
+}
+
+/** The callback owns its connection until commit/rollback completes.
+ * Always use the supplied client inside the callback (not global query()).
+ * Do not issue BEGIN/COMMIT/ROLLBACK: this function owns that lifecycle.
+ */
+export async function withTransaction<T>(fn: (client: ClientBase) => Promise<T>): Promise<T> {
+  if (IS_DESKTOP) {
+    const database = await (isTestModeEnabled() ? getDesktopTestDb() : getDesktopDb())
+    return database.transaction(async (tx) => {
+      const client = {
+        query(text: string, params?: unknown[]) {
+          if (/^\s*(BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK)\b/i.test(text)) {
+            throw new Error('Transaction lifecycle is managed by withTransaction.')
+          }
+          return tx.query(text, params)
+        },
+      } as unknown as ClientBase
+      return fn(client)
+    })
+  }
+  const client = await pool.connect()
+  let releaseError: Error | boolean | undefined
+  try {
+    await client.query('BEGIN')
+    const result = await fn(client)
+    await client.query('COMMIT')
+    return result
+  } catch (error) {
+    try { await client.query('ROLLBACK') } catch (rollbackError) {
+      releaseError = rollbackError instanceof Error ? rollbackError : true
+    }
+    throw error
+  } finally {
+    client.release(releaseError)
   }
 }

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getSales, getCashiers } from '@/app/actions/sales'
 import { SalesList } from '@/components/sales/sales-list'
+import { businessDate } from '@/lib/business-date'
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
@@ -12,10 +13,7 @@ export const metadata = {
 }
 
 function formatLocalDateInput(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return businessDate(date)
 }
 
 export default async function SalesPage({ searchParams }: PageProps) {

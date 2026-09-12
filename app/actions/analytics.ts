@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { requireOwner } from '@/lib/auth'
 import { query } from '@/lib/db'
+import { BUSINESS_UTC_OFFSET } from '@/lib/business-date'
 
 // ── getSalesAnalytics ──────────────────────────────────────────────────────────
 
@@ -52,13 +53,15 @@ export async function getSalesAnalytics(
            FROM sale_items si
            JOIN sales s2 ON s2.id = si.sale_id
            WHERE s2.store_id = $1
-             AND s2.created_at::date >= $2::date
-             AND s2.created_at::date <= $3::date
+             AND s2.voided_at IS NULL
+             AND s2.created_at >= (($2::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
+             AND s2.created_at < ((($3::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
          ), 0) AS total_units_sold
        FROM sales s
        WHERE s.store_id = $1
-         AND s.created_at::date >= $2::date
-         AND s.created_at::date <= $3::date`,
+         AND s.voided_at IS NULL
+         AND s.created_at >= (($2::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
+         AND s.created_at < ((($3::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)`,
       [user.store_id, dateFrom, dateTo],
     )
     const summary = summaryRes.rows[0]
@@ -70,14 +73,15 @@ export async function getSalesAnalytics(
     // Daily revenue
     const dailyRes = await query(
       `SELECT
-         s.created_at::date::text AS date,
+         (((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date)::text AS date,
          SUM(s.total_amount)::float AS revenue
        FROM sales s
        WHERE s.store_id = $1
-         AND s.created_at::date >= $2::date
-         AND s.created_at::date <= $3::date
-       GROUP BY s.created_at::date
-       ORDER BY s.created_at::date ASC`,
+         AND s.voided_at IS NULL
+         AND s.created_at >= (($2::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
+         AND s.created_at < ((($3::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
+       GROUP BY ((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date
+       ORDER BY ((s.created_at AT TIME ZONE 'UTC') + INTERVAL '1 hour')::date ASC`,
       [user.store_id, dateFrom, dateTo],
     )
     const dailyRevenue: DailyRevenue[] = dailyRes.rows.map((r) => ({
@@ -106,8 +110,9 @@ export async function getSalesAnalytics(
        JOIN products p ON p.id = si.product_id
        LEFT JOIN batches b ON b.id = si.batch_id
        WHERE s.store_id = $1
-         AND s.created_at::date >= $2::date
-         AND s.created_at::date <= $3::date
+         AND s.voided_at IS NULL
+         AND s.created_at >= (($2::date::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
+         AND s.created_at < ((($3::date + 1)::text || ' 00:00:00${BUSINESS_UTC_OFFSET}')::timestamptz)
        GROUP BY p.id, p.name, p.sku
        ORDER BY "unitsSold" DESC
        LIMIT 10`,

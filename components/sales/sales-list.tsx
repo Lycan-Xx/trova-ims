@@ -3,7 +3,8 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, ShoppingBag } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,7 +17,7 @@ import {
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
 import { SalesCsvButton } from '@/components/sales/sales-csv-button'
-import type { SaleRow, SalesDayTotal } from '@/app/actions/sales'
+import { getSaleItems, type SaleItemResult, type SaleRow, type SalesDayTotal } from '@/app/actions/sales'
 
 interface SalesListProps {
   sales: SaleRow[]
@@ -87,6 +88,9 @@ export function SalesList({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { currency } = useCurrency()
+  const [expandedSaleId, setExpandedSaleId] = React.useState<string | null>(null)
+  const [itemsBySaleId, setItemsBySaleId] = React.useState<Record<string, SaleItemResult[]>>({})
+  const [loadingSaleId, setLoadingSaleId] = React.useState<string | null>(null)
 
   function updateParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString())
@@ -103,10 +107,37 @@ export function SalesList({
     updateParam('page', String(next))
   }
 
+  async function toggleSale(saleId: string) {
+    if (expandedSaleId === saleId) {
+      setExpandedSaleId(null)
+      return
+    }
+    const cachedItems = itemsBySaleId[saleId]
+    if (cachedItems) {
+      setExpandedSaleId(saleId)
+      return
+    }
+    setLoadingSaleId(saleId)
+    try {
+      const result = await getSaleItems(saleId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setItemsBySaleId((current) => ({ ...current, [saleId]: result.data }))
+      setExpandedSaleId(saleId)
+    } catch {
+      toast.error('Could not load the items for this sale.')
+    } finally {
+      setLoadingSaleId(null)
+    }
+  }
+
   const rangeStart = totalCount === 0 ? 0 : (currentPage - 1) * 20 + 1
   const rangeEnd = Math.min(currentPage * 20, totalCount)
 
   const TABLE_COLS = [
+    '',
     'Receipt No.',
     'Date & Time',
     'Items',
@@ -280,9 +311,9 @@ export function SalesList({
           <table className="w-full border-collapse">
             <thead>
               <tr style={{ background: 'var(--bg-card)' }}>
-                {TABLE_COLS.map((col) => (
+                {TABLE_COLS.map((col, columnIndex) => (
                   <th
-                    key={col}
+                    key={`${col}-${columnIndex}`}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.05em]"
                     style={{ color: 'var(--text-muted)' }}
                   >
@@ -323,6 +354,22 @@ export function SalesList({
                       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
                     >
+                  {/* Expand line items */}
+                  <td className="w-10 px-2 py-3">
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-bg-input"
+                      style={{ color: 'var(--text-muted)' }}
+                      aria-label={`${expandedSaleId === sale.id ? 'Collapse' : 'Expand'} items for ${sale.receipt_number}`}
+                      aria-expanded={expandedSaleId === sale.id}
+                      disabled={loadingSaleId === sale.id}
+                      onClick={() => void toggleSale(sale.id)}
+                    >
+                      {loadingSaleId === sale.id
+                        ? <Loader2 size={15} className="animate-spin" />
+                        : <ChevronDown size={16} className={`transition-transform ${expandedSaleId === sale.id ? 'rotate-180' : ''}`} />}
+                    </button>
+                  </td>
                   {/* Receipt Number */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="mono text-[13px]" style={{ color: 'var(--text-muted)' }}>
@@ -378,6 +425,25 @@ export function SalesList({
                     </Link>
                   </td>
                     </tr>
+                    {expandedSaleId === sale.id && (
+                      <tr style={{ background: 'var(--bg-input)' }}>
+                        <td colSpan={TABLE_COLS.length} className="px-10 py-3">
+                          <div className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+                            <div className="grid grid-cols-[1fr_70px_110px_120px] gap-3 px-3 py-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+                              <span>Product</span><span className="text-right">Qty</span><span className="text-right">Unit Price</span><span className="text-right">Line Total</span>
+                            </div>
+                            {itemsBySaleId[sale.id]?.map((item) => (
+                              <div key={`${sale.id}-${item.productId}-${item.batchId ?? 'untracked'}`} className="grid grid-cols-[1fr_70px_110px_120px] gap-3 px-3 py-2 text-sm" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                                <span style={{ color: 'var(--text-primary)' }}>{item.productName}</span>
+                                <span className="text-right" style={{ color: 'var(--text-secondary)' }}>{item.qtySold}</span>
+                                <span className="mono text-right" style={{ color: 'var(--text-secondary)' }}>{formatCurrency(item.unitPrice, currency)}</span>
+                                <span className="mono text-right font-medium" style={{ color: 'var(--text-primary)' }}>{formatCurrency(item.lineTotal, currency)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </React.Fragment>
                 )
               })}
