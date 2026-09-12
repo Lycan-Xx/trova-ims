@@ -17,6 +17,7 @@ import {
 import { useCurrency } from '@/lib/currency-context'
 import { formatCurrency } from '@/lib/currency'
 import { SalesCsvButton } from '@/components/sales/sales-csv-button'
+import { SalesDateRangeFilter } from '@/components/sales/sales-date-range-filter'
 import { getSaleItems, type SaleItemResult, type SaleRow, type SalesDayTotal } from '@/app/actions/sales'
 
 interface SalesListProps {
@@ -107,6 +108,16 @@ export function SalesList({
     updateParam('page', String(next))
   }
 
+  function updateDateRange(range: { from: string | null; to: string | null }) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (range.from) params.set('dateFrom', range.from)
+    else params.delete('dateFrom')
+    if (range.to) params.set('dateTo', range.to)
+    else params.delete('dateTo')
+    params.delete('page')
+    router.push(`${pathname}?${params.toString()}`)
+  }
+
   async function toggleSale(saleId: string) {
     if (expandedSaleId === saleId) {
       setExpandedSaleId(null)
@@ -189,35 +200,7 @@ export function SalesList({
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Date from */}
-        <input
-          type="date"
-          defaultValue={dateFrom ?? ''}
-          onChange={(e) => updateParam('dateFrom', e.target.value)}
-          className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
-          style={{
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-            colorScheme: 'dark',
-          }}
-          aria-label="From date"
-        />
-
-        {/* Date to */}
-        <input
-          type="date"
-          defaultValue={dateTo ?? ''}
-          onChange={(e) => updateParam('dateTo', e.target.value)}
-          className="h-9 rounded-lg px-3 text-sm focus:outline-none focus:ring-2"
-          style={{
-            background: 'var(--bg-input)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-            colorScheme: 'dark',
-          }}
-          aria-label="To date"
-        />
+        <SalesDateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={updateDateRange} />
 
         {/* Payment method */}
         <Select
