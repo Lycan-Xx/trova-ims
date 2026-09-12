@@ -121,7 +121,7 @@ function csvForRows(rows: ExportRow[]): string {
       formatTime(createdAt),
       row.receipt_number,
       row.product_name,
-      row.qty_sold,
+      String(row.qty_sold),
       row.unit_price,
       row.line_total,
       '',

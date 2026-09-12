@@ -282,7 +282,7 @@ export async function GET(req: NextRequest) {
       await dbCreateCategory(ctx.storeId, 'Snacks')
       await dbCreateCategory(ctx.storeId, 'Alcohol')
       const cats = await dbGetCategories(ctx.storeId)
-      const names = cats.map((c) => String((c as { name: string }).name))
+      const names = cats.map((c) => String(c.name))
       const sorted = [...names].sort()
       assertEqual(JSON.stringify(names), JSON.stringify(sorted), 'alphabetical order')
     })

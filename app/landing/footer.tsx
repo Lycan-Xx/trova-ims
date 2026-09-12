@@ -67,6 +67,7 @@ const SOCIAL = [
 // ── Nav links ────────────────────────────────────────────────────────────────
 
 const LINKS = [
+  { label: 'Download', href: '/download' },
   { label: 'Sign in', href: '/sign-in' },
   { label: 'Get started', href: '/sign-up' },
   { label: 'Privacy Policy', href: '/privacy' },
