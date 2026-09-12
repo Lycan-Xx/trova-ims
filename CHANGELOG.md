@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.7.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.7.0...v1.7.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **desktop:** stabilize customer display fullscreen ([b83399a](https://github.com/Lycan-Xx/trova-ims/commit/b83399a765d88e5fa942168cfa16a66fd02daef0))
+
 ## [1.7.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.6.1...v1.7.0) (2026-09-07)
 
 
