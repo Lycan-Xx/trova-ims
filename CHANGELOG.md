@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to Trova IMS are documented here, generated automatically by [release-please](https://github.com/googleapis/release-please) from conventional commit messages.
+## [1.8.0](https://github.com/Lycan-Xx/trova-ims/compare/v1.7.1...v1.8.0) (2026-09-12)
+
+
+### Features
+
+* add automatic desktop download page ([1f764d1](https://github.com/Lycan-Xx/trova-ims/commit/1f764d104ed43df790ad07ca9c0f3fae9a310a33))
+
 ## [1.7.1](https://github.com/Lycan-Xx/trova-ims/compare/v1.7.0...v1.7.1) (2026-09-12)
 
 
